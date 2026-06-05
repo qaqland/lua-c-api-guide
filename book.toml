@@ -1,0 +1,15 @@
+[book]
+title = "Lua 5.4 C API 交互指南"
+authors = ["Lua C API Guide"]
+description = "面向 C 开发者的 Lua 5.4 C API 教程与参考手册"
+src = "src"
+language = "zh"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "coal"
+no-section-label = false

@@ -1,0 +1,15 @@
+# mdBook build output
+book/
+
+# Meson build directories
+build/
+
+# Example binaries
+examples/bin/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

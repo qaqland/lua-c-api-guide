@@ -1,6 +1,8 @@
 # 总览与准备
 
 > 本指南由 **Kimi K2.6** 编写生成。
+>
+> 仓库地址：https://github.com/qaqland/lua-c-api-guide
 
 ## 什么是 Lua C API
 

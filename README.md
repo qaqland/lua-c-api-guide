@@ -3,6 +3,8 @@
 > 面向有 C 和 Lua 基础、但尚未接触 Lua C API 的开发者。
 >
 > 本指南由 **Kimi K2.6** 编写生成。
+>
+> 仓库地址：https://github.com/qaqland/lua-c-api-guide
 
 本指南通过**文档 + 可编译代码示例**的方式，系统讲解 Lua 与 C 的交互机制，涵盖从基础栈操作到高级主题（userdata、metatable、协程、GC、调试接口）的完整内容。
 

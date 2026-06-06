@@ -11,30 +11,48 @@ lua_createtable(L, narr, nrec);  // 预分配数组部分 narr、哈希部分 nr
 
 ## 读写字段
 
-假设栈顶是一个 table：
+假设栈顶是一个 table。
+
+### 通用 API（支持任意类型键）
 
 ```c
-// 读：t[key] 
-lua_pushstring(L, "name");     // 压入 key 
-lua_gettable(L, -2);           // 查询，弹出 key，结果压栈 
-// 此时栈顶是 t["name"] 的值 
+// 读：t[key]
+lua_pushstring(L, "name");     // 压入 key
+lua_gettable(L, -2);           // 查询，弹出 key，结果压栈
+// 此时栈顶是 t["name"] 的值
 
-// 写：t[key] = value 
-lua_pushstring(L, "name");
-lua_pushstring(L, "Alice");
-lua_settable(L, -3);           // 弹出 key 和 value，设置到 table 
+// 写：t[key] = value
+lua_pushstring(L, "name");     // 压入 key
+lua_pushstring(L, "Alice");    // 压入 value
+lua_settable(L, -3);           // 弹出 key 和 value，设置到 table
 ```
 
 > `lua_gettable` 和 `lua_settable` 会触发 `__index` / `__newindex` 元方法。
 
-## 便捷 API（不触发元方法）
+### 便捷 API（字符串键与整数键）
+
+当 key 为字符串或整数时，可使用更便捷的函数，无需手动压入 key：
+
+```c
+// 字符串键：t.name = "Alice"
+lua_pushstring(L, "Alice");    // 压入 value
+lua_setfield(L, -2, "name");   // 弹出 value，设置到 table
+
+// 整数键：t[1] = "lua"
+lua_pushstring(L, "lua");      // 压入 value
+lua_seti(L, -2, 1);            // 弹出 value，设置到 table
+```
+
+> `lua_getfield` / `lua_setfield` / `lua_geti` / `lua_seti` 同样会触发对应的元方法。
+
+## 便捷 API 汇总
 
 | 操作 | 函数 | 说明 |
 |------|------|------|
 | 获取整数键值 | `lua_geti(L, idx, n)` | `t[n]`，结果压栈 |
-| 设置整数键值 | `lua_seti(L, idx, n)` | `t[n] = value` |
+| 设置整数键值 | `lua_seti(L, idx, n)` | `t[n] = value`，弹出栈顶 value |
 | 获取字符串键值 | `lua_getfield(L, idx, k)` | `t.k`，结果压栈 |
-| 设置字符串键值 | `lua_setfield(L, idx, k, v)` | `t.k = v` |
+| 设置字符串键值 | `lua_setfield(L, idx, k)` | `t.k = v`，弹出栈顶 v |
 | 原始获取 | `lua_rawget` / `lua_rawgeti` / `lua_rawgetp` | 绕过元方法 |
 | 原始设置 | `lua_rawset` / `lua_rawseti` / `lua_rawsetp` | 绕过元方法 |
 
@@ -50,9 +68,7 @@ while (lua_next(L, table_index) != 0) {
 }
 ```
 
-`lua_next` 会触发 `__pairs`  metamethod（如果存在）。如果需要原始遍历，用 `lua_rawlen` +
-
-> 整数下标遍历数组部分，或使用 `luaH_next` 的内部逻辑（不推荐）。
+`lua_next` 直接遍历 table 的内部存储，**不触发任何元方法**（包括 `__pairs`）。如果需要仅遍历数组部分，可用 `lua_rawlen` 获取长度后按整数下标遍历。
 
 ## 数组长度
 

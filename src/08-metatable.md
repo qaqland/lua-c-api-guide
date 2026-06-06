@@ -6,8 +6,8 @@ Metatable 让 C 可以为 userdata 和 table 定义自定义行为（运算符�
 
 | 元方法 | 触发时机 |
 |--------|----------|
-| `__index` | 访问不存在的字段 |
-| `__newindex` | 给不存在的字段赋值 |
+| `__index` | 访问不存在的字段（table）；访问任何字段（full userdata） |
+| `__newindex` | 给不存在的字段赋值（table）；给任何字段赋值（full userdata，无 `__newindex` 时报错） |
 | `__gc` | GC 回收对象时 |
 | `__len` | 使用 `#` 运算符 |
 | `__tostring` | `tostring()` 或 `print()` |

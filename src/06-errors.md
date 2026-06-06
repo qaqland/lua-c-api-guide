@@ -60,13 +60,7 @@ return luaL_error(L, "bad value at index %d: %s", idx, reason);
 
 ## C 函数中的保护模式
 
-如果你想在 C 函数内部保护一段代码，使用 `lua_pcall` 即可。但如果需要在 C 层面做更细粒度的保护，可以使用：
-
-```c
-int lua_cpcall(lua_State *L, lua_CFunction func, void *ud);
-```
-
-不过 Lua 5.2+ 更推荐的方式是在 C 函数内直接组织好栈，然后使用 `lua_pcall`。
+如果你想在 C 函数内部保护一段代码，直接在 C 函数内组织好栈，然后使用 `lua_pcall` 即可。`lua_cpcall` 已在 Lua 5.2 中移除，不再可用。
 
 ## 常见错误场景
 

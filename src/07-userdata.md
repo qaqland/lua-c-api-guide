@@ -22,6 +22,9 @@ obj->y = 0;
 
 > `lua_newuserdatauv` 的第三个参数是关联的 uservalue 数量（Lua 5.4），
 > 用于将 Lua 值与 userdata 关联。此处设为 0 表示不关联。
+>
+> `lua_newuserdata(L, size)` 是兼容宏，等价于 `lua_newuserdatauv(L, size, 1)`，
+> 默认创建 1 个 uservalue。
 
 创建后，userdata 在 Lua 中是一个完整对象，可以赋给变量、放入 table、
 作为参数传递。当不再被引用时，Lua GC 会自动回收它。

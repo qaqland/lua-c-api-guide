@@ -64,6 +64,7 @@ const char *lua_setupvalue(lua_State *L, int funcindex, int n);
 - `funcindex` 指向栈上的 Lua 函数
 - `n` 是 upvalue 索引（从 1 开始）
 - 返回 upvalue 名称
+- `lua_setupvalue` **会弹出栈顶的值**并将其赋给指定 upvalue，调用前需先把新值压入栈
 
 ## 辅助库：luaL\_traceback
 

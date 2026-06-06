@@ -3,6 +3,7 @@
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -35,7 +36,7 @@ static int vec2_add(lua_State *L) {
 
 static int vec2_len(lua_State *L) {
     Vec2 *v = check_vec2(L, 1);
-    lua_pushnumber(L, v->x * v->x + v->y * v->y);
+    lua_pushnumber(L, sqrt(v->x * v->x + v->y * v->y));
     return 1;
 }
 
@@ -72,6 +73,7 @@ static int vec2_index(lua_State *L) {
     luaL_getmetatable(L, VEC2_MT);
     lua_pushvalue(L, 2);
     lua_rawget(L, -2);
+    lua_remove(L, -2);   // 移除 metatable，保留查询结果在栈顶
     return 1;
 }
 
@@ -111,7 +113,7 @@ int main(void) {
                          "print('b =', b)\n"
                          "print('a + b =', c)\n"
                          "print('a.x =', a.x)\n"
-                         "print('#a (len_sq) =', #a)\n"
+                         "print('#a (len) =', #a)\n"
                          "print('a == b ?', a == b)\n"
                          "local a2 = vec2.new(1, 2)\n"
                          "print('a == a2 ?', a == a2)\n";

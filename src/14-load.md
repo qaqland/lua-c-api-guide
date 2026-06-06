@@ -17,7 +17,9 @@ int lua_load(lua_State *L, lua_Reader reader, void *data,
 | `chunkname` | 用于错误信息和调试信息的名字 |
 | `mode` | `"t"`(文本)、`"b"`(字节码)、`"bt"`(两者) |
 
-返回值：`LUA_OK`、`LUA_ERRSYNTAX`、`LUA_ERRMEM`。
+返回值：`LUA_OK`、`LUA_ERRSYNTAX`、`LUA_ERRMEM`、`LUA_ERRGCMM`。
+
+> `LUA_ERRGCMM` 表示在解析过程中 GC 的 `__gc` 元方法出错。`luaL_loadfilex` 在文件打开/读取失败时还可能返回 `LUA_ERRFILE`。
 
 ### Reader 回调
 

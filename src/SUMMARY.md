@@ -26,3 +26,5 @@
 
 -----
 
+[MANUAL](MANUAL.md)
+

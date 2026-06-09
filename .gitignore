@@ -4,6 +4,9 @@ book/
 # Meson build directories
 build/
 
+# Lua reference source (download from https://www.lua.org/ftp/lua-5.4.8.tar.gz)
+lua-5.4.8/
+
 # Example binaries
 examples/bin/
 

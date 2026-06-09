@@ -1,6 +1,6 @@
 # Lua 5.4 参考手册（中英文对照 + 源码注解）
 
-> 本文档基于 Lua 5.4 源码目录中的 `manual/manual.of` 逐行翻译，并结合 `lapi.c`、`lauxlib.c`、`lua.h`、`lgc.c`、`ltm.c` 等源码进行理解注解。
+> 本文档基于 Lua 5.4 源码目录中的 `doc/manual.html` 逐行翻译，并结合 `lapi.c`、`lauxlib.c`、`lua.h`、`lgc.c`、`ltm.c` 等源码进行理解注解。
 >
 > 每段英文原文后紧跟中文翻译；对其中较复杂的关键词和概念，单独用列表展开解释；涉及实现细节时，结合源码（如 `lapi.c`、`lauxlib.c`、`lua.h`、`lgc.c`、`ltm.c` 等）搜索印证并补充注解。后续续写时请保持相同格式。
 
@@ -297,7 +297,6 @@ The message handler is called only for regular runtime errors. It is not called 
 
 Lua also offers a system of warnings (see warn). Unlike errors, warnings do not interfere in any way with program execution. They typically only generate a message to the user, although this behavior can be adapted from C (see lua_setwarnf).
 Lua 还提供了一套**警告**系统（见 `warn`）。与错误不同，警告不会以任何方式干扰程序的执行。它们通常只向用户生成一条消息，尽管这种行为可以从 C 中调整（见 `lua_setwarnf`）。
-
 
 ## 2.4 – Metatables and Metamethods（元表与元方法）
 
@@ -1755,7 +1754,6 @@ unary operators (not   #     -     ~)
 As usual, you can use parentheses to change the precedences of an expression.
 像往常一样，你可以使用括号来改变表达式的优先级。
 
-
 The concatenation (..) and exponentiation (^) operators are right associative. All other binary operators are left associative.
 连接（`..`）和幂运算（`^`）运算符是右结合的。所有其他二元运算符是左结合的。
 
@@ -2196,6 +2194,8 @@ However, you can change this behavior by compiling Lua with the macro LUA_USE_AP
 The Lua library is fully reentrant: it has no global variables.
 Lua 库是完全可重入的：它没有全局变量。
 
+- **reentrant**（可重入）：函数可在执行中途被中断并安全地再次调用，因所有状态保存在栈或 `lua_State` 中，不依赖全局可变数据。
+
 It keeps all information it needs in a dynamic structure, called the Lua state.
 它将所需的所有信息保存在一个称为 **Lua 状态**（Lua state）的动态结构中。
 
@@ -2210,8 +2210,6 @@ The type lua_State (despite its name) refers to a thread.
 
 A pointer to a thread must be passed as the first argument to every function in the library, except to lua_newstate, which creates a Lua state from scratch and returns a pointer to the main thread in the new state.
 指向线程的指针必须作为第一个参数传递给库中的每个函数，除了 `lua_newstate`，它从头创建 Lua 状态并返回指向新状态中主线程的指针。
-
-- **实现**（implementation）：`lua_State` 在 `lstate.h` 中定义为 per-thread 结构，包含栈顶 `top`、当前调用信息 `ci`、栈底 `stack` 等；全局状态 `global_State` 由所有线程共享，可通过 `G(L)` 访问。
 
 ## 4.1 – The Stack（栈）
 
@@ -2231,8 +2229,6 @@ Whenever Lua calls C, the called function gets a new stack, which is independent
 
 This stack initially contains any arguments to the C function and it is where the C function can store temporary Lua values and must push its results to be returned to the caller (see lua_CFunction).
 此栈最初包含 **C 函数**的任何参数，也是 **C 函数**可以存储临时 Lua 值并必须推送其结果以返回给调用者的地方（见 `lua_CFunction`）。
-
-- **实现**（implementation）：栈在 `lstate.c:stack_init` 中分配，初始大小为 `BASIC_STACK_SIZE + EXTRA_STACK`；每个槽位是 `StackValue`（即 `TValue`），`L->top.p` 始终指向第一个空闲槽位。
 
 For convenience, most query operations in the API do not follow a strict stack discipline. Instead, they can refer to any element in the stack by using an index:
 为了方便起见，API 中的大多数查询操作不遵循严格的栈规则。相反，它们可以通过使用**索引**（index）引用栈中的任何元素：
@@ -2262,6 +2258,9 @@ Whenever Lua calls C, it ensures that the stack has space for at least LUA_MINST
 
 LUA_MINSTACK is defined as 20, so that usually you do not have to worry about stack space unless your code has loops pushing elements onto the stack.
 `LUA_MINSTACK` 定义为 20，因此通常你不必担心栈空间，除非你的代码有将元素推入栈的循环。
+
+- **LUA_MINSTACK**（最小栈余量）：C 函数被 Lua 调用时，Lua 确保至少有 20 个可用槽位（见 `lua.h`）。此常量决定了 C 函数无需检查即可安全推送的最大元素数。
+- **stack overflow**（栈溢出）：当实际推送元素数超过可用槽位时，栈空间耗尽，可能导致内存损坏。C 代码应通过 `lua_checkstack` 显式扩展。
 
 Whenever necessary, you can use the function lua_checkstack to ensure that the stack has enough space for pushing new elements.
 每当必要时，你可以使用函数 `lua_checkstack` 确保栈有足够的空间用于推送新元素。
@@ -2329,8 +2328,6 @@ For these functions, the pointer is guaranteed to be valid while the caller func
 Except for these guarantees, the garbage collector is free to invalidate any pointer to internal strings.
 除了这些保证之外，垃圾回收器可以随意使任何指向内部字符串的指针失效。
 
-- **实现**（implementation）：`TString` 对象内嵌字符数组（短字符串直接内嵌，长字符串通过 `extra` 指向外部块），因此 `getstr` 返回的指针在对象未被 GC 回收前始终有效；栈移动仅复制 `TValue` 引用，不改变字符串对象本身。
-
 ## 4.2 – C Closures（C 闭包）
 
 When a C function is created, it is possible to associate some values with it, thus creating a C closure (see lua_pushcclosure); these values are called upvalues and are accessible to the function whenever it is called.
@@ -2347,8 +2344,6 @@ Any access to lua_upvalueindex(n), where n is greater than the number of upvalue
 
 A C closure can also change the values of its corresponding upvalues.
 **C 闭包**还可以更改其相应上值的值。
-
-- **实现**（implementation）：C 闭包在 `lfunc.c:luaF_newCclosure` 中创建，类型为 `CClosure`，其 `upvalue` 数组直接内嵌在对象尾部；`lua_pushcclosure` 从栈中弹出值并复制到该数组。
 
 ## 4.3 – Registry（注册表）
 
@@ -2375,8 +2370,6 @@ Therefore, integer keys in the registry must not be used for other purposes.
 
 When you create a new Lua state, its registry comes with some predefined values. These predefined values are indexed with integer keys defined as constants in lua.h.
 创建新的 Lua 状态时，其注册表带有一些预定义值。这些预定义值用 `lua.h` 中定义为常量的整数键索引。
-
-- **实现**（implementation）：注册表是 `global_State` 中的 `l_registry` 字段（`TValue`），本质上是一个表；`LUA_REGISTRYINDEX` 伪索引通过 `index2value` 映射到 `&G(L)->l_registry`。
 
 The following constants are defined:
 定义了以下常量：
@@ -2409,13 +2402,13 @@ The documentation for each function indicates whether it can raise errors.
 If an error happens outside any protected environment, Lua calls a panic function (see lua_atpanic) and then calls abort, thus exiting the host application.
 如果错误发生在任何受保护环境之外，Lua 会调用**恐慌函数**（panic function）（见 `lua_atpanic`），然后调用 `abort`，从而退出宿主应用程序。
 
+- **panic function**（恐慌函数）：最后一道防线。当错误无处可去时被调用，接收错误对象在栈顶；若返回则 `abort`，因此通常应 `longjmp` 到自己的恢复点而非返回。
+
 Your panic function can avoid this exit by never returning (e.g., doing a long jump to your own recovery point outside Lua).
 你的恐慌函数可以通过永不返回来避免此退出（例如，执行长跳转到你自己的 Lua 外部恢复点）。
 
 The panic function, as its name implies, is a mechanism of last resort. Programs should avoid it.
 恐慌函数，顾名思义，是最后的手段。程序应避免使用它。
-
-- **实现**（implementation）：`ldo.c:luaD_throw` 是错误传播核心；若线程有 `errorJmp`（`lua_longjmp` 链）则 `longjmp` 到恢复点，否则沿主线程链传播，最终无处理者时调用 `panic` 并 `abort`。
 
 As a general rule, when a C function is called by Lua with a Lua state, it can do whatever it wants on that Lua state, as it should be already protected.
 作为一般规则，当 **C 函数**被 Lua 用 Lua 状态调用时，它可以在该 Lua 状态上执行任何操作，因为它应该已经受到保护。
@@ -2566,8 +2559,6 @@ It also has the same upvalues.
 Whatever it returns is handled by Lua as if it were the return of the original function.
 它返回的任何内容都由 Lua 处理，就像它是原始函数的返回一样。
 
-- **实现**（implementation）：延续机制的核心在 `ldo.c` 的 `resume` 和 `luaD_call` 中；`CallInfo` 的 `u.c.k` 和 `u.c.ctx` 保存延续函数与上下文，让出后 `longjmp` 返回到 `lua_resume`，再由 C 调用者显式调用 `k`。
-
 ## 4.6 – Functions and Types（函数和类型）
 
 Here we list all functions and types from the C API in alphabetical order.
@@ -2690,9 +2681,6 @@ The value of op must be one of the following constants:
 - **LUA_OPSHL**：执行左移（`<<`）
 - **LUA_OPSHR**：执行右移（`>>`）
 
-
-- **实现**（implementation）：`lapi.c:lua_arith` 对二元操作检查栈顶有两个操作数，一元操作则复制栈顶作为第二个假操作数；最终调用 `luaO_arith`（或 `luaV_mod` 等）计算结果并替换栈顶。
-
 ### lua_atpanic
 
 `lua_CFunction lua_atpanic (lua_State *L, lua_CFunction panicf);`
@@ -2701,8 +2689,6 @@ The value of op must be one of the following constants:
 
 Sets a new panic function and returns the old one (see §4.4).
 设置新的恐慌函数并返回旧的恐慌函数（见 §4.4）。
-
-- **实现**（implementation）：`lapi.c:lua_atpanic` 直接读写 `global_State->panic` 指针，不涉及栈操作；当无保护环境中发生错误时，`luaD_throw` 会在无恢复点后调用此函数。
 
 ### lua_call
 
@@ -2752,8 +2738,6 @@ lua_setglobal(L, "a");                         /* set global 'a' */
 Note that the code above is balanced: at its end, the stack is back to its original configuration. This is considered good programming practice.
 请注意，上面的代码是**平衡的**：在其末尾，栈恢复到原始配置。这被认为是良好的编程实践。
 
-- **实现**（implementation）：`lapi.c:lua_call` 本质是 `lua_callk` 且 `k==NULL` 的包装；它定位函数在栈中的位置后调用 `luaD_callnoyield`，再通过 `adjustresults` 调整结果数量。
-
 ### lua_callk
 
 `void lua_callk (lua_State *L, int nargs, int nresults, lua_KContext ctx, lua_KFunction k);`
@@ -2762,8 +2746,6 @@ Note that the code above is balanced: at its end, the stack is back to its origi
 
 This function behaves exactly like lua_call, but allows the called function to yield (see §4.5).
 此函数的行为与 `lua_call` 完全相同，但允许被调用函数让出（见 §4.5）。
-
-- **实现**（implementation）：`lapi.c:lua_callk` 若提供了延续 `k` 且线程可让出，则将 `k` 和 `ctx` 保存到当前 `CallInfo` 的 `u.c` 字段，然后调用 `luaD_call`；否则走 `luaD_callnoyield`。
 
 ### lua_CFunction
 
@@ -2823,8 +2805,6 @@ It returns false if it cannot fulfill the request, either because it would cause
 This function never shrinks the stack; if the stack already has space for the extra elements, it is left unchanged.
 此函数从不缩小栈；如果栈已经有额外元素的空间，则保持不变。
 
-- **实现**（implementation）：`lapi.c:lua_checkstack` 检查 `L->stack_last.p - L->top.p > n`，不足时调用 `luaD_growstack` 扩展栈，并调整当前 `CallInfo` 的栈顶。
-
 ### lua_close
 
 `void lua_close (lua_State *L);`
@@ -2839,8 +2819,6 @@ On several platforms, you may not need to call this function, because all resour
 
 On the other hand, long-running programs that create multiple states, such as daemons or web servers, will probably need to close states as soon as they are not needed.
 另一方面，创建多个状态的长时间运行程序（如守护进程或 Web 服务器）可能需要在不需要时立即关闭状态。
-
-- **实现**（implementation）：`lstate.c:lua_close` 切换到主线程后调用 `close_state`，释放所有对象、关闭待关闭变量，并最终调用分配器释放 `LG` 结构所占内存。
 
 ### lua_closeslot
 
@@ -2900,8 +2878,6 @@ Concatenates the n values at the top of the stack, pops them, and leaves the res
 Concatenation is performed following the usual semantics of Lua (see §3.4.6).
 连接遵循 Lua 的通常语义执行（见 §3.4.6）。
 
-- **实现**（implementation）：`lapi.c:lua_concat` 调用 `luaV_concat` 执行实际连接（可能触发 `__concat` 元方法）；`n==0` 时压入空字符串；最后触发 `luaC_checkGC` 检查是否需要垃圾回收。
-
 ### lua_copy
 
 `void lua_copy (lua_State *L, int fromidx, int toidx);`
@@ -2950,8 +2926,6 @@ This function does not pop the Lua function from the stack.
 Raises a Lua error, using the value on the top of the stack as the error object. This function does a long jump, and therefore never returns (see luaL_error).
 引发 Lua 错误，使用栈顶的值作为错误对象。此函数执行长跳转，因此永远不会返回（见 `luaL_error`）。
 
-- **实现**（implementation）：`lapi.c:lua_error` 检查错误对象是否为预分配的内存错误消息，是则调用 `luaM_error`，否则调用 `luaG_errormsg` 通过 `luaD_throw` 执行 `longjmp`。
-
 ### lua_gc
 
 `int lua_gc (lua_State *L, int what, ...);`
@@ -2980,8 +2954,6 @@ For more details about these options, see collectgarbage.
 This function should not be called by a finalizer.
 终结器不应调用此函数。
 
-- **实现**（implementation）：`lapi.c:lua_gc` 是一个大的 `switch`，根据 `what` 调用 `luaC_fullgc`、`luaC_step`、`luaC_changemode` 等；内存统计直接读取 `global_State` 中的 `totalbytes` 和 `GCdebt`。
-
 ### lua_getallocf
 
 `lua_Alloc lua_getallocf (lua_State *L, void **ud);`
@@ -2999,8 +2971,6 @@ Returns the memory-allocation function of a given state. If ud is not NULL, Lua 
 
 Pushes onto the stack the value t[k], where t is the value at the given index. As in Lua, this function may trigger a metamethod for the "index" event (see §2.4). Returns the type of the pushed value.
 将值 `t[k]` 推入栈，其中 `t` 是给定索引处的值。与 Lua 中一样，此函数可能会触发 "index" 事件的元方法（见 §2.4）。返回推送值的类型。
-
-- **实现**（implementation）：`lapi.c:lua_getfield` 将字符串键内部化为 `TString` 后，走与 `lua_gettable` 类似的 `luaV_fastget` / `luaV_finishget` 路径访问表字段。
 
 ### lua_getextraspace
 
@@ -3026,8 +2996,6 @@ By default, this area has the size of a pointer to void, but you can recompile L
 Pushes onto the stack the value of the global name. Returns the type of that value.
 将全局变量 `name` 的值推入栈。返回该值的类型。
 
-- **实现**（implementation）：`lapi.c:lua_getglobal` 获取全局表 `_G` 后，调用 `auxgetstr` 以 `TString` 为键查表，走 `luaV_fastget` / `luaV_finishget` 路径。
-
 ### lua_geti
 
 `int lua_geti (lua_State *L, int index, lua_Integer i);`
@@ -3046,8 +3014,6 @@ Pushes onto the stack the value t[i], where t is the value at the given index. A
 If the value at the given index has a metatable, the function pushes that metatable onto the stack and returns 1. Otherwise, the function returns 0 and pushes nothing on the stack.
 如果给定索引处的值具有元表，则函数将该元表推入栈并返回 1。否则，函数返回 0 且不在栈上推送任何内容。
 
-- **实现**（implementation）：`lapi.c:lua_getmetatable` 对表和 userdata 直接取对象内部的 `metatable` 指针；对其他类型取 `G(L)->mt[ttype(obj)]`（全局按类型元表）。
-
 ### lua_gettable
 
 `int lua_gettable (lua_State *L, int index);`
@@ -3060,8 +3026,6 @@ Pushes onto the stack the value t[k], where t is the value at the given index an
 This function pops the key from the stack, pushing the resulting value in its place. As in Lua, this function may trigger a metamethod for the "index" event (see §2.4). Returns the type of the pushed value.
 此函数从栈中弹出键，将结果值推入其位置。与 Lua 中一样，此函数可能会触发 "index" 事件的元方法（见 §2.4）。返回推送值的类型。
 
-- **实现**（implementation）：`lapi.c:lua_gettable` 先尝试 `luaV_fastget` 快速路径（直接查表），失败时走 `luaV_finishget` 慢路径，可能调用 `__index` 元方法，结果替换栈顶的键。
-
 ### lua_gettop
 
 `int lua_gettop (lua_State *L);`
@@ -3071,8 +3035,6 @@ This function pops the key from the stack, pushing the resulting value in its pl
 Returns the index of the top element in the stack. Because indices start at 1, this result is equal to the number of elements in the stack; in particular, 0 means an empty stack.
 返回栈中顶部元素的索引。因为索引从 1 开始，此结果等于栈中的元素数量；特别地，0 表示空栈。
 
-- **实现**（implementation）：`lapi.c:lua_gettop` 直接计算 `L->top.p - (L->ci->func.p + 1)`，即栈顶与当前函数栈底之间的偏移。
-
 ### lua_getiuservalue
 
 `int lua_getiuservalue (lua_State *L, int index, int n);`
@@ -3081,8 +3043,6 @@ Returns the index of the top element in the stack. Because indices start at 1, t
 
 Pushes onto the stack the n-th user value associated with the full userdata at the given index and returns the type of the pushed value. If the userdata does not have that value, pushes nil and returns LUA_TNONE.
 将给定索引处完整 userdata 的第 `n` 个用户值推入栈，并返回推送值的类型。如果 userdata 没有该值，则推入 `nil` 并返回 `LUA_TNONE`。
-
-- **实现**（implementation）：`lapi.c:lua_getiuservalue` 检查 `n` 是否在 `[1, nuvalue]` 范围内，命中则从 `uvalue(o)->uv[n-1].uv` 复制 `TValue` 到栈顶，否则压入 `nil`。
 
 ### lua_insert
 
@@ -3142,8 +3102,6 @@ Returns 1 if the value at the given index is a function (either C or Lua), and 0
 Returns 1 if the value at the given index is an integer (that is, the value is a number and is represented as an integer), and 0 otherwise.
 如果给定索引处的值是整数（也就是说，该值是数字并表示为整数），则返回 1，否则返回 0。
 
-- **实现**（implementation）：`lapi.c:lua_isinteger` 直接检查 `TValue` 的类型标签是否为 `LUA_VNUMINT`，不做任何转换。
-
 ### lua_islightuserdata
 
 `int lua_islightuserdata (lua_State *L, int index);`
@@ -3189,8 +3147,6 @@ Returns 1 if the given index is not valid or if the value at this index is nil, 
 Returns 1 if the value at the given index is a number or a string convertible to a number, and 0 otherwise.
 如果给定索引处的值是数字或可转换为数字的字符串，则返回 1，否则返回 0。
 
-- **实现**（implementation）：`lapi.c:lua_isnumber` 通过 `tonumber` 宏尝试转换：整数和浮点直接成功，字符串调用 `luaO_str2num` 词法解析，转换成功则返回 1。
-
 ### lua_isstring
 
 `int lua_isstring (lua_State *L, int index);`
@@ -3199,8 +3155,6 @@ Returns 1 if the value at the given index is a number or a string convertible to
 
 Returns 1 if the value at the given index is a string or a number (which is always convertible to a string), and 0 otherwise.
 如果给定索引处的值是字符串或数字（始终可转换为字符串），则返回 1，否则返回 0。
-
-- **实现**（implementation）：`lapi.c:lua_isstring` 直接检查类型标签是否为 `LUA_VSHRSTR` / `LUA_VLNGSTR`，或对数字类型（`cvt2str`）也返回 1，因为数字总可转字符串。
 
 ### lua_istable
 
@@ -3297,8 +3251,6 @@ If the resulting function has upvalues, its first upvalue is set to the value of
 Creates a new independent state and returns its main thread. Returns NULL if it cannot create the state (due to lack of memory). The argument f is the allocator function; Lua will do all memory allocation for this state through this function (see lua_Alloc). The second argument, ud, is an opaque pointer that Lua passes to the allocator in every call.
 创建一个新的独立状态并返回其主线程。如果无法创建状态（由于内存不足），则返回 `NULL`。参数 `f` 是分配器函数；Lua 将通过此函数完成此状态的所有内存分配（见 `lua_Alloc`）。第二个参数 `ud` 是一个不透明指针，Lua 在每次调用时将其传递给分配器。
 
-- **实现**（implementation）：`lstate.c:lua_newstate` 使用用户提供的分配器分配 `LG` 结构（包含 `lua_State` 和 `global_State`），初始化 GC、字符串表、注册表等，然后在保护模式下调用 `f_luaopen` 完成初始化。
-
 ### lua_newtable
 
 `void lua_newtable (lua_State *L);`
@@ -3332,8 +3284,6 @@ This function creates and pushes on the stack a new full userdata, with nuvalue 
 The function returns the address of the block of memory. Lua ensures that this address is valid as long as the corresponding userdata is alive (see §2.5). Moreover, if the userdata is marked for finalization (see §2.5.3), its address is valid at least until the call to its finalizer.
 该函数返回内存块的地址。Lua 确保只要相应的 userdata 处于活动状态，此地址就有效（见 §2.5）。此外，如果 userdata 被标记为终结（见 §2.5.3），则其地址至少有效直到调用其终结器。
 
-- **实现**（implementation）：`lapi.c:lua_newuserdatauv` 调用 `luaS_newudata` 分配 `Udata` 对象及关联的 `nuvalue` 个 `TValue` 空间，压栈后返回 `getudatamem(u)` 指向的原始内存块地址。
-
 ### lua_next
 
 `int lua_next (lua_State *L, int index);`
@@ -3364,8 +3314,6 @@ While traversing a table, avoid calling lua_tolstring directly on a key, unless 
 
 This function may raise an error if the given key is neither nil nor present in the table. See function next for the caveats of modifying the table during its traversal.
 如果给定键既不是 `nil` 也不在表中，则此函数可能会引发错误。有关在遍历期间修改表的注意事项，请参见 `next` 函数。
-
-- **实现**（implementation）：`lapi.c:lua_next` 调用 `luaH_next` 遍历表的数组部分和哈希部分；成功时压入键值对并返回 1，失败时弹出键并返回 0。
 
 ### lua_Number
 
@@ -3411,8 +3359,6 @@ Typically, the message handler is used to add more debug information to the erro
 The lua_pcall function returns one of the following status codes: LUA_OK, LUA_ERRRUN, LUA_ERRMEM, or LUA_ERRERR.
 `lua_pcall` 函数返回以下状态码之一：`LUA_OK`、`LUA_ERRRUN`、`LUA_ERRMEM` 或 `LUA_ERRERR`。
 
-- **实现**（implementation）：`lapi.c:lua_pcall` 本质是 `lua_pcallk` 且 `k==NULL` 的包装；在无延续时通过 `luaD_pcall` 建立 `setjmp` 恢复点，调用 `f_call` 执行 `luaD_callnoyield`。
-
 ### lua_pcallk
 
 `int lua_pcallk (lua_State *L, int nargs, int nresults, int msgh, lua_KContext ctx, lua_KFunction k);`
@@ -3421,8 +3367,6 @@ The lua_pcall function returns one of the following status codes: LUA_OK, LUA_ER
 
 This function behaves exactly like lua_pcall, except that it allows the called function to yield (see §4.5).
 此函数的行为与 `lua_pcall` 完全相同，不同之处在于它允许被调用函数让出（见 §4.5）。
-
-- **实现**（implementation）：`lapi.c:lua_pcallk` 在提供延续且线程可让出时，将 `k`、`ctx` 和错误处理函数索引保存到 `CallInfo`，设置 `CIST_YPCALL` 标志后调用 `luaD_call`；否则回退到传统的 `luaD_pcall` 保护调用。
 
 ### lua_pop
 
@@ -3433,8 +3377,6 @@ This function behaves exactly like lua_pcall, except that it allows the called f
 Pops n elements from the stack. It is implemented as a macro over lua_settop.
 从栈中弹出 `n` 个元素。它实现为 `lua_settop` 上的宏。
 
-- **实现**（implementation）：`lua_pop` 是宏，定义为 `lua_settop(L, -(n)-1)`，直接调整栈顶指针实现弹出。
-
 ### lua_pushboolean
 
 `void lua_pushboolean (lua_State *L, int b);`
@@ -3443,8 +3385,6 @@ Pops n elements from the stack. It is implemented as a macro over lua_settop.
 
 Pushes a boolean value with value b onto the stack.
 将值为 `b` 的布尔值推入栈。
-
-- **实现**（implementation）：`lapi.c:lua_pushboolean` 根据 `b` 的真假，在栈顶设置 `LUA_VTRUE` 或 `LUA_VFALSE` 类型标签，然后递增栈顶。
 
 ### lua_pushcclosure
 
@@ -3466,8 +3406,6 @@ The maximum value for n is 255.
 
 When n is zero, this function creates a light C function, which is just a pointer to the C function. In that case, it never raises a memory error.
 当 `n` 为零时，此函数创建一个**轻量 C 函数**（light C function），它只是指向 **C 函数**的指针。在这种情况下，它永远不会引发内存错误。
-
-- **实现**（implementation）：`lapi.c:lua_pushcclosure` 在 `n==0` 时直接压入轻量函数指针；否则调用 `luaF_newCclosure` 创建 `CClosure` 对象，从栈中弹出 `n` 个上值并复制到闭包的 `upvalue` 数组中。
 
 ### lua_pushcfunction
 
@@ -3514,8 +3452,6 @@ Pushes the global environment onto the stack.
 Pushes an integer with value n onto the stack.
 将值为 `n` 的整数推入栈。
 
-- **实现**（implementation）：`lapi.c:lua_pushinteger` 通过 `setivalue` 将 `lua_Integer` 写入栈顶的 `TValue`，设置类型标签为 `LUA_VNUMINT`，然后递增栈顶。
-
 ### lua_pushlightuserdata
 
 `void lua_pushlightuserdata (lua_State *L, void *p);`
@@ -3558,8 +3494,6 @@ Returns a pointer to the internal copy of the string (see §4.1.3).
 Pushes a nil value onto the stack.
 将 `nil` 值推入栈。
 
-- **实现**（implementation）：`lapi.c:lua_pushnil` 在栈顶设置 `LUA_VNIL` 类型标签（即 `setnilvalue`），然后递增栈顶指针。
-
 ### lua_pushnumber
 
 `void lua_pushnumber (lua_State *L, lua_Number n);`
@@ -3568,8 +3502,6 @@ Pushes a nil value onto the stack.
 
 Pushes a float with value n onto the stack.
 将值为 `n` 的浮点数推入栈。
-
-- **实现**（implementation）：`lapi.c:lua_pushnumber` 通过 `setfltvalue` 将 `lua_Number` 写入栈顶的 `TValue`，设置类型标签为 `LUA_VNUMFLT`，然后递增栈顶。
 
 ### lua_pushstring
 
@@ -3585,8 +3517,6 @@ Returns a pointer to the internal copy of the string (see §4.1.3).
 
 If s is NULL, pushes nil and returns NULL.
 如果 `s` 为 `NULL`，则推入 `nil` 并返回 `NULL`。
-
-- **实现**（implementation）：`lapi.c:lua_pushstring` 调用 `luaS_new` 对字符串做内部化（intern），得到 `TString*` 后压栈；`NULL` 时压入 `nil`。返回的指针指向 Lua 内部管理的字符串数据。
 
 ### lua_pushthread
 
@@ -3605,8 +3535,6 @@ Pushes the thread represented by L onto the stack. Returns 1 if this thread is t
 
 Pushes a copy of the element at the given index onto the stack.
 将给定索引处元素的副本推入栈。
-
-- **实现**（implementation）：`lapi.c:lua_pushvalue` 通过 `index2value` 将索引转为 `TValue*` 指针，再用 `setobj2s` 复制到栈顶并递增栈顶。
 
 ### lua_pushvfstring
 
@@ -3634,8 +3562,6 @@ Returns 1 if the two values in indices index1 and index2 are primitively equal (
 
 Similar to lua_gettable, but does a raw access (i.e., without metamethods). The value at index must be a table.
 类似于 `lua_gettable`，但执行原始访问（即不使用元方法）。索引处的值必须是表。
-
-- **实现**（implementation）：`lapi.c:lua_rawget` 直接从栈顶弹出键，调用 `luaH_get` 在 `Table` 的哈希表/数组中查找，结果通过 `finishrawget` 压入栈顶。
 
 ### lua_rawgeti
 
@@ -3672,8 +3598,6 @@ Returns the raw "length" of the value at the given index: for strings, this is t
 
 Similar to lua_settable, but does a raw assignment (i.e., without metamethods). The value at index must be a table.
 类似于 `lua_settable`，但执行原始赋值（即不使用元方法）。索引处的值必须是表。
-
-- **实现**（implementation）：`lapi.c:lua_rawset` 直接调用 `luaH_set` 写入哈希表，然后执行 `invalidateTMcache` 和 `luaC_barrierback` 以保持 GC 屏障一致性，最后弹出键和值。
 
 ### lua_rawseti
 
@@ -3759,8 +3683,6 @@ To resume a coroutine, you remove the *nresults yielded values from its stack, p
 The parameter from represents the coroutine that is resuming L. If there is no such coroutine, this parameter can be NULL.
 参数 `from` 表示正在恢复 `L` 的协程。如果没有这样的协程，此参数可以为 `NULL`。
 
-- **实现**（implementation）：`ldo.c:lua_resume` 检查线程状态（`LUA_OK` 或 `LUA_YIELD`），复制 `nCcalls` 后通过 `luaD_rawrunprotected` 调用 `resume`；返回时根据状态计算 `*nresults`（让出结果数或函数返回值数量）。
-
 ### lua_rotate
 
 `void lua_rotate (lua_State *L, int idx, int n);`
@@ -3788,8 +3710,6 @@ Changes the allocator function of a given state to f with user data ud.
 Does the equivalent to t[k] = v, where t is the value at the given index and v is the value on the top of the stack. This function pops the value from the stack. As in Lua, this function may trigger a metamethod for the "newindex" event (see §2.4).
 执行 `t[k] = v` 的等效操作，其中 `t` 是给定索引处的值，`v` 是栈顶的值。此函数从栈中弹出值。与 Lua 中一样，此函数可能会触发 "newindex" 事件的元方法（见 §2.4）。
 
-- **实现**（implementation）：`lapi.c:lua_setfield` 将字符串键内部化为 `TString` 后压入栈顶，再走与 `lua_settable` 类似的 `luaV_fastget` / `luaV_finishset` 路径完成赋值。
-
 ### lua_setglobal
 
 `void lua_setglobal (lua_State *L, const char *name);`
@@ -3798,8 +3718,6 @@ Does the equivalent to t[k] = v, where t is the value at the given index and v i
 
 Pops a value from the stack and sets it as the new value of global name.
 从栈中弹出一个值，并将其设置为全局变量 `name` 的新值。
-
-- **实现**（implementation）：`lapi.c:lua_setglobal` 获取全局表（`_G`）后，通过 `auxsetstr` 以 `TString` 为键完成赋值，逻辑与 `lua_setfield` 相同。
 
 ### lua_seti
 
@@ -3819,8 +3737,6 @@ Does the equivalent to t[n] = v, where t is the value at the given index and v i
 Pops a value from the stack and sets it as the new n-th user value associated to the full userdata at the given index. Returns 0 if the userdata does not have that value.
 从栈中弹出一个值，并将其设置为给定索引处完整 userdata 的新第 `n` 个用户值。如果 userdata 没有该值，则返回 0。
 
-- **实现**（implementation）：`lapi.c:lua_setiuservalue` 检查 `n` 是否在 `[1, nuvalue]` 范围内，命中则通过 `setobj` 将栈顶值复制到 `uvalue(o)->uv[n-1].uv`，并执行 `luaC_barrierback` GC 屏障。
-
 ### lua_setmetatable
 
 `int lua_setmetatable (lua_State *L, int index);`
@@ -3833,8 +3749,6 @@ Pops a table or nil from the stack and sets that value as the new metatable for 
 (For historical reasons, this function returns an int, which now is always 1.)
 （由于历史原因，此函数返回 `int`，现在始终为 1。）
 
-- **实现**（implementation）：`lapi.c:lua_setmetatable` 根据对象类型分别设置元表指针，并执行 `luaC_objbarrier` 和 `luaC_checkfinalizer` 以处理 GC 屏障和终结器标记。
-
 ### lua_settable
 
 `void lua_settable (lua_State *L, int index);`
@@ -3843,8 +3757,6 @@ Pops a table or nil from the stack and sets that value as the new metatable for 
 
 Does the equivalent to t[k] = v, where t is the value at the given index, v is the value on the top of the stack, and k is the value just below the top. This function pops both the key and the value from the stack. As in Lua, this function may trigger a metamethod for the "newindex" event (see §2.4).
 执行 `t[k] = v` 的等效操作，其中 `t` 是给定索引处的值，`v` 是栈顶的值，`k` 是栈顶正下方的值。此函数从栈中弹出键和值。与 Lua 中一样，此函数可能会触发 "newindex" 事件的元方法（见 §2.4）。
-
-- **实现**（implementation）：`lapi.c:lua_settable` 先尝试 `luaV_fastget` 查找目标位置，命中则走 `luaV_finishfastset` 快速写入，否则走 `luaV_finishset` 慢路径，可能调用 `__newindex` 元方法。
 
 ### lua_settop
 
@@ -3857,8 +3769,6 @@ Accepts any index, or 0, and sets the stack top to this index. If the new top is
 
 This function can run arbitrary code when removing an index marked as to-be-closed from the stack.
 当从栈中移除标记为待关闭的索引时，此函数可以运行任意代码。
-
-- **实现**（implementation）：`lapi.c:lua_settop` 根据索引正负计算新的栈顶位置；扩展时填充 `nil`，收缩时若触及待关闭槽则调用 `luaF_close` 执行 `__close` 元方法。
 
 ### lua_setwarnf
 
@@ -3969,8 +3879,6 @@ Converts the Lua value at the given index to the signed integral type lua_Intege
 If isnum is not NULL, its referent is assigned a boolean value that indicates whether the operation succeeded.
 如果 `isnum` 不为 `NULL`，则其引用被赋值为表示操作是否成功的布尔值。
 
-- **实现**（implementation）：`lapi.c:lua_tointegerx` 通过 `tointeger` 宏尝试将 `TValue` 转为 `lua_Integer`（支持从浮点和字符串转换），并通过 `isnum` 输出是否成功。
-
 ### lua_tolstring
 
 `const char *lua_tolstring (lua_State *L, int index, size_t *len);`
@@ -3988,8 +3896,6 @@ lua_tolstring returns a pointer to a string inside the Lua state (see §4.1.3). 
 
 This function can raise memory errors only when converting a number to a string (as then it may create a new string).
 此函数仅在将数字转换为字符串时可能引发内存错误（因为那时它可能会创建新字符串）。
-
-- **实现**（implementation）：`lapi.c:lua_tolstring` 若值不是字符串则先检查是否可转换（`cvt2str`），可转换时调用 `luaO_tostring` 创建新字符串并替换栈中原值；最终返回 `getstr(tsvalue(o))` 指向的内部字符串数据。
 
 ### lua_tonumber
 
@@ -4011,8 +3917,6 @@ Converts the Lua value at the given index to the C type lua_Number (see lua_Numb
 
 If isnum is not NULL, its referent is assigned a boolean value that indicates whether the operation succeeded.
 如果 `isnum` 不为 `NULL`，则其引用被赋值为表示操作是否成功的布尔值。
-
-- **实现**（implementation）：`lapi.c:lua_tonumberx` 通过 `tonumber` 宏尝试将 `TValue` 转为 `lua_Number`（整数会先转为浮点），并通过 `isnum` 输出是否成功。
 
 ### lua_topointer
 
@@ -4072,8 +3976,6 @@ Returns the type of the value in the given valid index, or LUA_TNONE for a non-v
 - `LUA_TTHREAD`
 - `LUA_TLIGHTUSERDATA`
 
-- **实现**（implementation）：`lapi.c:lua_type` 通过 `index2value` 获取 `TValue*`，有效时返回 `ttype(o)`（取低 4 位的基础类型），无效时返回 `LUA_TNONE`。
-
 ### lua_typename
 
 `const char *lua_typename (lua_State *L, int tp);`
@@ -4082,8 +3984,6 @@ Returns the type of the value in the given valid index, or LUA_TNONE for a non-v
 
 Returns the name of the type encoded by the value tp, which must be one the values returned by lua_type.
 返回由值 `tp` 编码的类型的名称，`tp` 必须是 `lua_type` 返回的值之一。
-
-- **实现**（implementation）：`lapi.c:lua_typename` 直接查表 `luaT_typename`，将类型常量映射为字符串（如 `"nil"`、`"number"`、`"string"` 等）。
 
 ### lua_Unsigned
 
@@ -4100,8 +4000,6 @@ The unsigned version of lua_Integer.
 
 Returns the pseudo-index that represents the i-th upvalue of the running function (see §4.2). i must be in the range [1,256].
 返回表示运行函数的第 `i` 个上值的伪索引（见 §4.2）。`i` 必须在范围 `[1,256]` 内。
-
-- **实现**（implementation）：`lua_upvalueindex` 是宏，定义为 `(LUA_REGISTRYINDEX - (i))`，利用负索引越界区域表示上值位置；在 `index2value` 中对小于 `LUA_REGISTRYINDEX` 的索引解析为 `CClosure->upvalue` 数组。
 
 ### lua_version
 
@@ -4185,8 +4083,6 @@ Usually, this function does not return; when the coroutine eventually resumes, i
 
 This function can raise an error if it is called from a thread with a pending C call with no continuation function (what is called a C-call boundary), or it is called from a thread that is not running inside a resume (typically the main thread).
 如果从未具有延续函数的挂起 **C 调用**的线程调用此函数（称为 **C 调用边界**），或者从不在恢复内部运行的线程（通常是主线程）调用此函数，则此函数可能引发错误。
-
-- **实现**（implementation）：`ldo.c:lua_yieldk` 将线程状态设为 `LUA_YIELD`，保存让出结果数量到 `ci->u2.nyield`；恢复时由 `lua_resume` 通过 `luaD_rawrunprotected` 重新进入执行流。
 
 ## 4.7 – The Debug Interface（调试接口）
 
@@ -4297,8 +4193,6 @@ Each character in the string what selects some fields of the structure ar to be 
 This function returns 0 to signal an invalid option in what; even then the valid options are handled correctly.
 此函数返回 0 以表示 `what` 中的无效选项；即使如此，有效选项也会正确处理。
 
-- **实现**（implementation）：`ldebug.c:lua_getinfo` 根据 `what` 字符串调用 `auxgetinfo` 填充 `lua_Debug` 字段；`'f'` 时压入函数，`'L'` 时通过 `collectvalidlines` 压入行号表。
-
 ### lua_getlocal
 
 `const char *lua_getlocal (lua_State *L, const lua_Debug *ar, int n);`
@@ -4331,8 +4225,6 @@ Gets information about the interpreter runtime stack.
 
 This function fills parts of a lua_Debug structure with an identification of the activation record of the function executing at a given level. Level 0 is the current running function, whereas level n+1 is the function that has called level n (except for tail calls, which do not count in the stack). When called with a level greater than the stack depth, lua_getstack returns 0; otherwise it returns 1.
 此函数用执行给定级别的函数的激活记录的标识填充 `lua_Debug` 结构的部分。级别 0 是当前运行的函数，而级别 n+1 是调用级别 n 的函数（尾调用除外，它们在栈中不计数）。当用大于栈深度的级别调用时，`lua_getstack` 返回 0；否则返回 1。
-
-- **实现**（implementation）：`ldebug.c:lua_getstack` 从 `L->ci` 开始沿 `previous` 链遍历 `CallInfo` 链表，跳过尾调用，找到对应层级后将 `ci` 指针保存到 `ar->i_ci`。
 
 ### lua_getupvalue
 
@@ -4390,8 +4282,6 @@ For each event, the hook is called as explained below:
 
 Hooks are disabled by setting mask to zero.
 通过将 `mask` 设置为零来禁用钩子。
-
-- **实现**（implementation）：`ldebug.c:lua_sethook` 将钩子函数、掩码和计数直接写入 `lua_State` 的对应字段；若掩码非零则调用 `settraps` 在 `CallInfo` 中设置陷阱标志，以便 `luaV_execute` 定期检查钩子。
 
 ### lua_setlocal
 
@@ -4480,8 +4370,6 @@ Functions called luaL_check* always raise an error if the check is not satisfied
 Adds the byte c to the buffer B (see luaL_Buffer).
 将字节 `c` 添加到缓冲区 `B`（见 `luaL_Buffer`）。
 
-- **实现**（implementation）：定义为宏，若当前空间不足会自动调用 `luaL_prepbuffsize` 扩容。Key source files: `lauxlib.h:luaL_addchar`。
-
 ### luaL_addgsub
 
 `const void luaL_addgsub (luaL_Buffer *B, const char *s, const char *p, const char *r);`
@@ -4490,8 +4378,6 @@ Adds the byte c to the buffer B (see luaL_Buffer).
 
 Adds a copy of the string s to the buffer B (see luaL_Buffer), replacing any occurrence of the string p with the string r.
 将字符串 `s` 的副本添加到缓冲区 `B`（见 `luaL_Buffer`），将字符串 `p` 的任何出现替换为字符串 `r`。
-
-- **实现**（implementation）：使用 `strstr` 查找匹配子串，逐段将前缀与替换串追加到缓冲区。Key source files: `lauxlib.c:luaL_addgsub`。
 
 ### luaL_addlstring
 
@@ -4502,8 +4388,6 @@ Adds a copy of the string s to the buffer B (see luaL_Buffer), replacing any occ
 Adds the string pointed to by s with length l to the buffer B (see luaL_Buffer). The string can contain embedded zeros.
 将 `s` 指向的长度为 `l` 的字符串添加到缓冲区 `B`（见 `luaL_Buffer`）。字符串可以包含嵌入的零。
 
-- **实现**（implementation）：通过 `prepbuffsize` 获取可写空间，再用 `memcpy` 复制数据。Key source files: `lauxlib.c:luaL_addlstring`。
-
 ### luaL_addsize
 
 `void luaL_addsize (luaL_Buffer *B, size_t n);`
@@ -4512,8 +4396,6 @@ Adds the string pointed to by s with length l to the buffer B (see luaL_Buffer).
 
 Adds to the buffer B a string of length n previously copied to the buffer area (see luaL_prepbuffer).
 将长度为 `n` 的字符串添加到缓冲区 `B`，该字符串先前已复制到缓冲区区域（见 `luaL_prepbuffer`）。
-
-- **实现**（implementation）：定义为宏，直接增加缓冲区内部计数 `B->n += n`。Key source files: `lauxlib.h:luaL_addsize`。
 
 ### luaL_addstring
 
@@ -4524,8 +4406,6 @@ Adds to the buffer B a string of length n previously copied to the buffer area (
 Adds the zero-terminated string pointed to by s to the buffer B (see luaL_Buffer).
 将 `s` 指向的以零结尾的字符串添加到缓冲区 `B`（见 `luaL_Buffer`）。
 
-- **实现**（implementation）：内部调用 `luaL_addlstring` 并自动计算 `strlen(s)`。Key source files: `lauxlib.c:luaL_addstring`。
-
 ### luaL_addvalue
 
 `void luaL_addvalue (luaL_Buffer *B);`
@@ -4534,8 +4414,6 @@ Adds the zero-terminated string pointed to by s to the buffer B (see luaL_Buffer
 
 Adds the value on the top of the stack to the buffer B (see luaL_Buffer). Pops the value.
 将栈顶的值添加到缓冲区 `B`（见 `luaL_Buffer`）。弹出该值。
-
-- **实现**（implementation）：将栈顶字符串复制到缓冲区内建或动态扩容的空间，随后 `lua_pop` 弹出该值；动态扩容时使用 `-2` 作为 box 位置。Key source files: `lauxlib.c:luaL_addvalue`。
 
 This is the only function on string buffers that can (and must) be called with an extra element on the stack, which is the value to be added to the buffer.
 这是字符串缓冲区上唯一可以（且必须）在栈上有额外元素时调用的函数，该额外元素是要添加到缓冲区的值。
@@ -4548,8 +4426,6 @@ This is the only function on string buffers that can (and must) be called with a
 
 Checks whether cond is true. If it is not, raises an error with a standard message (see luaL_argerror).
 检查 `cond` 是否为 true。如果不是，则引发带有标准消息的错误（见 `luaL_argerror`）。
-
-- **实现**（implementation）：定义为宏，在 `cond` 为假时调用 `luaL_argerror` 抛出错误。Key source files: `lauxlib.h:luaL_argcheck`。
 
 ### luaL_argerror
 
@@ -4567,8 +4443,6 @@ bad argument #arg to 'funcname' (extramsg)
 This function never returns.
 此函数永远不会返回。
 
-- **实现**（implementation）：通过 `lua_Debug` 获取当前 C 函数名，区分 method 调用调整参数序号，最终调用 `luaL_error` 格式化错误。Key source files: `lauxlib.c:luaL_argerror`。
-
 ### luaL_argexpected
 
 `void luaL_argexpected (lua_State *L, int cond, int arg, const char *tname);`
@@ -4578,16 +4452,12 @@ This function never returns.
 Checks whether cond is true. If it is not, raises an error about the type of the argument arg with a standard message (see luaL_typeerror).
 检查 `cond` 是否为 true。如果不是，则引发有关参数 `arg` 类型的错误，并带有标准消息（见 `luaL_typeerror`）。
 
-- **实现**（implementation）：定义为宏，在 `cond` 为假时调用 `luaL_typeerror` 抛出类型错误。Key source files: `lauxlib.h:luaL_argexpected`。
-
 ### luaL_Buffer
 
 `typedef struct luaL_Buffer luaL_Buffer;`
 
 Type for a string buffer.
 **字符串缓冲区**的类型。
-
-- **实现**（implementation）：结构体包含内联初始缓冲区 `init.b`，当容量不足时会在栈上创建 userdata box 并通过 `resizebox` 动态扩容。Key source files: `lauxlib.h:luaL_Buffer` / `lauxlib.c:prepbuffsize`。
 
 A string buffer allows C code to build Lua strings piecemeal. Its pattern of use is as follows:
 字符串缓冲区允许 **C 代码**逐步构建 Lua 字符串。其使用模式如下：
@@ -4617,8 +4487,6 @@ During its normal operation, a string buffer uses a variable number of stack slo
 Returns the address of the current content of buffer B (see luaL_Buffer). Note that any addition to the buffer may invalidate this address.
 返回缓冲区 `B` 当前内容的地址（见 `luaL_Buffer`）。请注意，对缓冲区的任何添加都可能使此地址无效。
 
-- **实现**（implementation）：定义为宏，直接返回缓冲区指针 `B->b`。Key source files: `lauxlib.h:luaL_buffaddr`。
-
 ### luaL_buffinit
 
 `void luaL_buffinit (lua_State *L, luaL_Buffer *B);`
@@ -4627,8 +4495,6 @@ Returns the address of the current content of buffer B (see luaL_Buffer). Note t
 
 Initializes a buffer B (see luaL_Buffer). This function does not allocate any space; the buffer must be declared as a variable.
 初始化缓冲区 `B`（见 `luaL_Buffer`）。此函数不分配任何空间；缓冲区必须声明为变量。
-
-- **实现**（implementation）：将缓冲区指向内联数组 `init.b`，并在栈上压入一个 light userdata 作为占位符。Key source files: `lauxlib.c:luaL_buffinit`。
 
 ### luaL_bufflen
 
@@ -4639,8 +4505,6 @@ Initializes a buffer B (see luaL_Buffer). This function does not allocate any sp
 Returns the length of the current content of buffer B (see luaL_Buffer).
 返回缓冲区 `B` 当前内容的长度（见 `luaL_Buffer`）。
 
-- **实现**（implementation）：定义为宏，直接返回已使用长度 `B->n`。Key source files: `lauxlib.h:luaL_bufflen`。
-
 ### luaL_buffinitsize
 
 `char *luaL_buffinitsize (lua_State *L, luaL_Buffer *B, size_t sz);`
@@ -4650,8 +4514,6 @@ Returns the length of the current content of buffer B (see luaL_Buffer).
 Equivalent to the sequence luaL_buffinit, luaL_prepbuffsize.
 等价于序列 `luaL_buffinit`、`luaL_prepbuffsize`。
 
-- **实现**（implementation）：先调用 `luaL_buffinit` 初始化，再调用 `prepbuffsize` 预分配 `sz` 字节并返回可写指针。Key source files: `lauxlib.c:luaL_buffinitsize`。
-
 ### luaL_buffsub
 
 `void luaL_buffsub (luaL_Buffer *B, int n);`
@@ -4660,8 +4522,6 @@ Equivalent to the sequence luaL_buffinit, luaL_prepbuffsize.
 
 Removes n bytes from the buffer B (see luaL_Buffer). The buffer must have at least that many bytes.
 从缓冲区 `B` 中移除 `n` 个字节（见 `luaL_Buffer`）。缓冲区必须至少有那么多字节。
-
-- **实现**（implementation）：定义为宏，直接减少内部计数 `B->n -= n`。Key source files: `lauxlib.h:luaL_buffsub`。
 
 ### luaL_callmeta
 
@@ -4684,8 +4544,6 @@ If the object at index obj has a metatable and this metatable has a field e, thi
 Checks whether the function has an argument of any type (including nil) at position arg.
 检查函数在位置 `arg` 处是否有任何类型（包括 `nil`）的参数。
 
-- **实现**（implementation）：检查 `lua_type` 是否为 `LUA_TNONE`，若是则调用 `luaL_argerror`。Key source files: `lauxlib.c:luaL_checkany`。
-
 ### luaL_checkinteger
 
 `lua_Integer luaL_checkinteger (lua_State *L, int arg);`
@@ -4695,8 +4553,6 @@ Checks whether the function has an argument of any type (including nil) at posit
 Checks whether the function argument arg is an integer (or can be converted to an integer) and returns this integer.
 检查函数参数 `arg` 是否为整数（或可转换为整数）并返回此整数。
 
-- **实现**（implementation）：调用 `lua_tointegerx` 检查转换是否成功，失败时调用 `interror` 给出更精确的错误信息。Key source files: `lauxlib.c:luaL_checkinteger`。
-
 ### luaL_checklstring
 
 `const char *luaL_checklstring (lua_State *L, int arg, size_t *l);`
@@ -4705,8 +4561,6 @@ Checks whether the function argument arg is an integer (or can be converted to a
 
 Checks whether the function argument arg is a string and returns this string; if l is not NULL fills its referent with the string's length.
 检查函数参数 `arg` 是否为字符串并返回此字符串；如果 `l` 不为 `NULL`，则用字符串长度填充其引用。
-
-- **实现**（implementation）：调用 `lua_tolstring` 获取字符串，若失败则通过 `tag_error` 引发错误。Key source files: `lauxlib.c:luaL_checklstring`。
 
 This function uses lua_tolstring to get its result, so all conversions and caveats of that function apply here.
 此函数使用 `lua_tolstring` 来获取其结果，因此该函数的所有转换和注意事项都适用于此处。
@@ -4720,8 +4574,6 @@ This function uses lua_tolstring to get its result, so all conversions and cavea
 Checks whether the function argument arg is a number and returns this number converted to a lua_Number.
 检查函数参数 `arg` 是否为数字并返回转换为 `lua_Number` 的此数字。
 
-- **实现**（implementation）：调用 `lua_tonumberx` 并检查 `isnum` 标志，失败时通过 `tag_error` 引发错误。Key source files: `lauxlib.c:luaL_checknumber`。
-
 ### luaL_checkoption
 
 `int luaL_checkoption (lua_State *L, int arg, const char *def, const char *const lst[]);`
@@ -4730,8 +4582,6 @@ Checks whether the function argument arg is a number and returns this number con
 
 Checks whether the function argument arg is a string and searches for this string in the array lst (which must be NULL-terminated). Returns the index in the array where the string was found. Raises an error if the argument is not a string or if the string cannot be found.
 检查函数参数 `arg` 是否为字符串，并在数组 `lst`（必须以 `NULL` 结尾）中搜索此字符串。返回找到字符串的数组索引。如果参数不是字符串或找不到字符串，则引发错误。
-
-- **实现**（implementation）：利用 `luaL_optstring` 处理默认值，再用线性搜索在 `lst` 中匹配，失败时调用 `luaL_argerror`。Key source files: `lauxlib.c:luaL_checkoption`。
 
 If def is not NULL, the function uses def as a default value when there is no argument arg or when this argument is nil.
 如果 `def` 不为 `NULL`，则当没有参数 `arg` 或此参数为 `nil` 时，函数使用 `def` 作为默认值。
@@ -4748,8 +4598,6 @@ This is a useful function for mapping strings to C enums. (The usual convention 
 Grows the stack size to top + sz elements, raising an error if the stack cannot grow to that size. msg is an additional text to go into the error message (or NULL for no additional text).
 将栈大小增加到 `top + sz` 个元素，如果栈无法增长到该大小，则引发错误。`msg` 是要进入错误消息的附加文本（或 `NULL` 表示没有附加文本）。
 
-- **实现**（implementation）：调用 `lua_checkstack` 检查容量，不足时通过 `luaL_error` 抛出 "stack overflow" 错误。Key source files: `lauxlib.c:luaL_checkstack`。
-
 ### luaL_checkstring
 
 `const char *luaL_checkstring (lua_State *L, int arg);`
@@ -4758,8 +4606,6 @@ Grows the stack size to top + sz elements, raising an error if the stack cannot 
 
 Checks whether the function argument arg is a string and returns this string.
 检查函数参数 `arg` 是否为字符串并返回此字符串。
-
-- **实现**（implementation）：定义为宏，等价于 `luaL_checklstring(L, n, NULL)`。Key source files: `lauxlib.h:luaL_checkstring`。
 
 This function uses lua_tolstring to get its result, so all conversions and caveats of that function apply here.
 此函数使用 `lua_tolstring` 来获取其结果，因此该函数的所有转换和注意事项都适用于此处。
@@ -4773,8 +4619,6 @@ This function uses lua_tolstring to get its result, so all conversions and cavea
 Checks whether the function argument arg has type t. See lua_type for the encoding of types for t.
 检查函数参数 `arg` 是否具有类型 `t`。有关 `t` 的类型编码，请参见 `lua_type`。
 
-- **实现**（implementation）：直接比较 `lua_type` 返回值，不匹配时调用 `tag_error`（内部调用 `luaL_typeerror`）。Key source files: `lauxlib.c:luaL_checktype`。
-
 ### luaL_checkudata
 
 `void *luaL_checkudata (lua_State *L, int arg, const char *tname);`
@@ -4784,8 +4628,6 @@ Checks whether the function argument arg has type t. See lua_type for the encodi
 Checks whether the function argument arg is a userdata of the type tname (see luaL_newmetatable) and returns the userdata's memory-block address (see lua_touserdata).
 检查函数参数 `arg` 是否为类型 `tname` 的 userdata（见 `luaL_newmetatable`）并返回 userdata 的内存块地址（见 `lua_touserdata`）。
 
-- **实现**（implementation）：先调用 `luaL_testudata` 进行测试，若返回 `NULL` 则通过 `luaL_argexpected` 引发类型错误。Key source files: `lauxlib.c:luaL_checkudata`。
-
 ### luaL_checkversion
 
 `void luaL_checkversion (lua_State *L);`
@@ -4794,8 +4636,6 @@ Checks whether the function argument arg is a userdata of the type tname (see lu
 
 Checks whether the code making the call and the Lua library being called are using the same version of Lua and the same numeric types.
 检查进行调用的代码和被调用的 Lua 库是否使用相同版本的 Lua 和相同的数字类型。
-
-- **实现**（implementation）：定义为宏，调用 `luaL_checkversion_` 比较 `LUA_VERSION_NUM` 与数值类型大小 `LUAL_NUMSIZES`。Key source files: `lauxlib.h:luaL_checkversion`。
 
 ### luaL_dofile
 
@@ -4813,8 +4653,6 @@ Loads and runs the given file. It is defined as the following macro:
 It returns 0 (LUA_OK) if there are no errors, or 1 in case of errors.
 如果没有错误，则返回 0（`LUA_OK`），如果出错则返回 1。
 
-- **实现**（implementation）：定义为宏，先调用 `luaL_loadfile` 加载，成功后再调用 `lua_pcall` 执行。Key source files: `lauxlib.h:luaL_dofile`。
-
 ### luaL_dostring
 
 `int luaL_dostring (lua_State *L, const char *str);`
@@ -4831,8 +4669,6 @@ Loads and runs the given string. It is defined as the following macro:
 It returns 0 (LUA_OK) if there are no errors, or 1 in case of errors.
 如果没有错误，则返回 0（`LUA_OK`），如果出错则返回 1。
 
-- **实现**（implementation）：定义为宏，先调用 `luaL_loadstring` 加载，成功后再调用 `lua_pcall` 执行。Key source files: `lauxlib.h:luaL_dostring`。
-
 ### luaL_error
 
 `int luaL_error (lua_State *L, const char *fmt, ...);`
@@ -4841,8 +4677,6 @@ It returns 0 (LUA_OK) if there are no errors, or 1 in case of errors.
 
 Raises an error. The error message format is given by fmt plus any extra arguments, following the same rules of lua_pushfstring. It also adds at the beginning of the message the file name and the line number where the error occurred, if this information is available.
 引发错误。错误消息格式由 `fmt` 加上任何额外参数给出，遵循与 `lua_pushfstring` 相同的规则。如果此信息可用，它还会在消息开头添加错误发生的文件名和行号。
-
-- **实现**（implementation）：先调用 `luaL_where` 获取位置前缀，再用 `lua_pushvfstring` 格式化消息，最后拼接并调用 `lua_error`。Key source files: `lauxlib.c:luaL_error`。
 
 This function never returns, but it is an idiom to use it in C functions as return luaL_error(args).
 此函数永远不会返回，但在 **C 函数**中使用它作为 `return luaL_error(args)` 是一种惯用法。
@@ -4856,8 +4690,6 @@ This function never returns, but it is an idiom to use it in C functions as retu
 This function produces the return values for process-related functions in the standard library (os.execute and io.close).
 此函数为标准库中与进程相关的函数（`os.execute` 和 `io.close`）生成返回值。
 
-- **实现**（implementation）：解析子进程退出状态（含 POSIX 下的 `WEXITSTATUS`/`WTERMSIG`），返回布尔状态、终止方式字符串与状态码。Key source files: `lauxlib.c:luaL_execresult`。
-
 ### luaL_fileresult
 
 `int luaL_fileresult (lua_State *L, int stat, const char *fname);`
@@ -4866,8 +4698,6 @@ This function produces the return values for process-related functions in the st
 
 This function produces the return values for file-related functions in the standard library (io.open, os.rename, file:seek, etc.).
 此函数为标准库中与文件相关的函数（`io.open`、`os.rename`、`file:seek` 等）生成返回值。
-
-- **实现**（implementation）：成功时压入 `true`，失败时压入 `fail`、错误消息与 `errno`。Key source files: `lauxlib.c:luaL_fileresult`。
 
 ### luaL_getmetafield
 
@@ -4878,8 +4708,6 @@ This function produces the return values for file-related functions in the stand
 Pushes onto the stack the field e from the metatable of the object at index obj and returns the type of the pushed value. If the object does not have a metatable, or if the metatable does not have this field, pushes nothing and returns LUA_TNIL.
 将索引 `obj` 处对象的元表中的字段 `e` 推入栈，并返回推送值的类型。如果对象没有元表，或者元表没有此字段，则不推送任何内容并返回 `LUA_TNIL`。
 
-- **实现**（implementation）：先 `lua_getmetatable` 获取元表，再 `lua_rawget` 读取字段，根据结果调整栈。Key source files: `lauxlib.c:luaL_getmetafield`。
-
 ### luaL_getmetatable
 
 `int luaL_getmetatable (lua_State *L, const char *tname);`
@@ -4888,8 +4716,6 @@ Pushes onto the stack the field e from the metatable of the object at index obj 
 
 Pushes onto the stack the metatable associated with the name tname in the registry (see luaL_newmetatable), or nil if there is no metatable associated with that name. Returns the type of the pushed value.
 将注册表中与名称 `tname` 关联的元表推入栈（见 `luaL_newmetatable`），如果没有与该名称关联的元表，则推入 `nil`。返回推送值的类型。
-
-- **实现**（implementation）：定义为宏，等价于 `lua_getfield(L, LUA_REGISTRYINDEX, tname)`。Key source files: `lauxlib.h:luaL_getmetatable`。
 
 ### luaL_getsubtable
 
@@ -4900,8 +4726,6 @@ Pushes onto the stack the metatable associated with the name tname in the regist
 Ensures that the value t[fname], where t is the value at index idx, is a table, and pushes that table onto the stack. Returns true if it finds a previous table there and false if it creates a new table.
 确保值 `t[fname]`（其中 `t` 是索引 `idx` 处的值）是表，并将该表推入栈。如果它在其中找到先前的表，则返回 true，如果创建新表，则返回 false。
 
-- **实现**（implementation）：先尝试 `lua_getfield` 获取字段，若非表则弹出并新建表后赋值。Key source files: `lauxlib.c:luaL_getsubtable`。
-
 ### luaL_gsub
 
 `const char *luaL_gsub (lua_State *L, const char *s, const char *p, const char *r);`
@@ -4910,8 +4734,6 @@ Ensures that the value t[fname], where t is the value at index idx, is a table, 
 
 Creates a copy of string s, replacing any occurrence of the string p with the string r. Pushes the resulting string on the stack and returns it.
 创建字符串 `s` 的副本，将字符串 `p` 的任何出现替换为字符串 `r`。将结果字符串推入栈并返回它。
-
-- **实现**（implementation）：内部使用 `luaL_Buffer` 与 `luaL_addgsub` 逐段构建结果字符串。Key source files: `lauxlib.c:luaL_gsub`。
 
 ### luaL_len
 
@@ -4922,8 +4744,6 @@ Creates a copy of string s, replacing any occurrence of the string p with the st
 Returns the "length" of the value at the given index as a number; it is equivalent to the # operator in Lua (see §3.4.7). Raises an error if the result of the operation is not an integer. (This case can only happen through metamethods.)
 返回给定索引处值的"长度"作为数字；它等价于 Lua 中的 `#` 运算符（见 §3.4.7）。如果操作结果不是整数，则引发错误。（这种情况只能通过元方法发生。）
 
-- **实现**（implementation）：调用 `lua_len` 触发元方法，再检查返回值是否为整数。Key source files: `lauxlib.c:luaL_len`。
-
 ### luaL_loadbuffer
 
 `int luaL_loadbuffer (lua_State *L, const char *buff, size_t sz, const char *name);`
@@ -4933,8 +4753,6 @@ Returns the "length" of the value at the given index as a number; it is equivale
 Equivalent to luaL_loadbufferx with mode equal to NULL.
 等价于 `luaL_loadbufferx` 且 `mode` 等于 `NULL`。
 
-- **实现**（implementation）：定义为宏，直接转发为 `luaL_loadbufferx(L, s, sz, n, NULL)`。Key source files: `lauxlib.h:luaL_loadbuffer`。
-
 ### luaL_loadbufferx
 
 `int luaL_loadbufferx (lua_State *L, const char *buff, size_t sz, const char *name, const char *mode);`
@@ -4943,8 +4761,6 @@ Equivalent to luaL_loadbufferx with mode equal to NULL.
 
 Loads a buffer as a Lua chunk. This function uses lua_load to load the chunk in the buffer pointed to by buff with size sz.
 将缓冲区加载为 Lua 代码块。此函数使用 `lua_load` 将代码块加载到 `buff` 指向的大小为 `sz` 的缓冲区中。
-
-- **实现**（implementation）：通过 `LoadS` 结构包装缓冲区，并调用 `lua_load` 以 `getS` 作为 reader 完成加载。Key source files: `lauxlib.c:luaL_loadbufferx`。
 
 This function returns the same results as lua_load. name is the chunk name, used for debug information and error messages. The string mode works as in the function lua_load.
 此函数返回与 `lua_load` 相同的结果。`name` 是代码块名称，用于调试信息和错误消息。字符串 `mode` 的工作方式与 `lua_load` 函数相同。
@@ -4958,8 +4774,6 @@ This function returns the same results as lua_load. name is the chunk name, used
 Equivalent to luaL_loadfilex with mode equal to NULL.
 等价于 `luaL_loadfilex` 且 `mode` 等于 `NULL`。
 
-- **实现**（implementation）：定义为宏，直接转发为 `luaL_loadfilex(L, f, NULL)`。Key source files: `lauxlib.h:luaL_loadfile`。
-
 ### luaL_loadfilex
 
 `int luaL_loadfilex (lua_State *L, const char *filename, const char *mode);`
@@ -4968,8 +4782,6 @@ Equivalent to luaL_loadfilex with mode equal to NULL.
 
 Loads a file as a Lua chunk. This function uses lua_load to load the chunk in the file named filename. If filename is NULL, then it loads from the standard input. The first line in the file is ignored if it starts with a #.
 将文件加载为 Lua 代码块。此函数使用 `lua_load` 将代码块加载到名为 `filename` 的文件中。如果 `filename` 为 `NULL`，则从标准输入加载。如果文件中的第一行以 `#` 开头，则忽略它。
-
-- **实现**（implementation）：通过 `LoadF` 结构逐块读取文件，自动跳过 BOM 与首行 `#` 注释，最后调用 `lua_load` 完成编译。Key source files: `lauxlib.c:luaL_loadfilex`。
 
 The string mode works as in the function lua_load.
 字符串 `mode` 的工作方式与 `lua_load` 函数相同。
@@ -4989,8 +4801,6 @@ As lua_load, this function only loads the chunk; it does not run it.
 Loads a string as a Lua chunk. This function uses lua_load to load the chunk in the zero-terminated string s.
 将字符串加载为 Lua 代码块。此函数使用 `lua_load` 将代码块加载到以零结尾的字符串 `s` 中。
 
-- **实现**（implementation）：直接调用 `luaL_loadbuffer`，以 `strlen(s)` 计算长度。Key source files: `lauxlib.c:luaL_loadstring`。
-
 This function returns the same results as lua_load.
 此函数返回与 `lua_load` 相同的结果。
 
@@ -5005,8 +4815,6 @@ Also as lua_load, this function only loads the chunk; it does not run it.
 
 Creates a new table and registers there the functions in the list l.
 创建一个新表并在其中注册列表 `l` 中的函数。
-
-- **实现**（implementation）：定义为宏，先调用 `luaL_newlibtable` 预分配合适大小的表，再调用 `luaL_setfuncs` 注册函数。Key source files: `lauxlib.h:luaL_newlib`。
 
 It is implemented as the following macro:
 它实现为以下宏：
@@ -5027,8 +4835,6 @@ The array l must be the actual array, not a pointer to it.
 Creates a new table with a size optimized to store all entries in the array l (but does not actually store them). It is intended to be used in conjunction with luaL_setfuncs (see luaL_newlib).
 创建一个大小优化的新表，以存储数组 `l` 中的所有条目（但实际上不存储它们）。它旨在与 `luaL_setfuncs` 一起使用（见 `luaL_newlib`）。
 
-- **实现**（implementation）：定义为宏，根据数组元素个数预计算哈希表大小并调用 `lua_createtable`。Key source files: `lauxlib.h:luaL_newlibtable`。
-
 It is implemented as a macro. The array l must be the actual array, not a pointer to it.
 它实现为宏。数组 `l` 必须是实际数组，而不是指向它的指针。
 
@@ -5040,8 +4846,6 @@ It is implemented as a macro. The array l must be the actual array, not a pointe
 
 If the registry already has the key tname, returns 0. Otherwise, creates a new table to be used as a metatable for userdata, adds to this new table the pair __name = tname, adds to the registry the pair [tname] = new table, and returns 1.
 如果注册表已经有键 `tname`，则返回 0。否则，创建一个新表用作 userdata 的元表，向此新表添加对 `__name = tname`，向注册表添加对 `[tname] = new table`，并返回 1。
-
-- **实现**（implementation）：先查询注册表判断是否存在，若不存在则创建表并设置 `__name` 字段后再写回注册表。Key source files: `lauxlib.c:luaL_newmetatable`。
 
 In both cases, the function pushes onto the stack the final value associated with tname in the registry.
 在这两种情况下，函数都将注册表中与 `tname` 关联的最终值推入栈。
@@ -5055,8 +4859,6 @@ In both cases, the function pushes onto the stack the final value associated wit
 Creates a new Lua state. It calls lua_newstate with an allocator based on the ISO C allocation functions and then sets a warning function and a panic function (see §4.4) that print messages to the standard error output.
 创建新的 Lua 状态。它使用基于 **ISO C** 分配函数的分配器调用 `lua_newstate`，然后设置警告函数和恐慌函数（见 §4.4），将消息打印到标准错误输出。
 
-- **实现**（implementation）：内部使用标准 C 的 `realloc`/`free` 作为分配器（`l_alloc`），并设置默认的 panic 与警告回调。Key source files: `lauxlib.c:luaL_newstate`。
-
 Returns the new state, or NULL if there is a memory allocation error.
 返回新状态，如果存在内存分配错误，则返回 `NULL`。
 
@@ -5068,8 +4870,6 @@ Returns the new state, or NULL if there is a memory allocation error.
 
 Opens all standard Lua libraries into the given state.
 将所有标准 Lua 库打开到给定状态中。
-
-- **实现**（implementation）：遍历 `loadedlibs` 数组，对每个库调用 `luaL_requiref` 将其注册到全局表。Key source files: `linit.c:luaL_openlibs`。
 
 ### luaL_opt
 
@@ -5096,8 +4896,6 @@ In words, if the argument arg is nil or absent, the macro results in the default
 If the function argument arg is an integer (or it is convertible to an integer), returns this integer. If this argument is absent or is nil, returns d. Otherwise, raises an error.
 如果函数参数 `arg` 是整数（或可转换为整数），则返回此整数。如果此参数缺失或为 `nil`，则返回 `d`。否则，引发错误。
 
-- **实现**（implementation）：利用 `luaL_opt` 宏，在参数不存在时返回默认值，否则调用 `luaL_checkinteger`。Key source files: `lauxlib.c:luaL_optinteger` / `lauxlib.h:luaL_opt`。
-
 ### luaL_optlstring
 
 `const char *luaL_optlstring (lua_State *L, int arg, const char *d, size_t *l);`
@@ -5106,8 +4904,6 @@ If the function argument arg is an integer (or it is convertible to an integer),
 
 If the function argument arg is a string, returns this string. If this argument is absent or is nil, returns d. Otherwise, raises an error.
 如果函数参数 `arg` 是字符串，则返回此字符串。如果此参数缺失或为 `nil`，则返回 `d`。否则，引发错误。
-
-- **实现**（implementation）：利用 `luaL_opt` 宏，在参数为 nil 或缺失时返回默认值并设置长度，否则调用 `luaL_checklstring`。Key source files: `lauxlib.c:luaL_optlstring` / `lauxlib.h:luaL_opt`。
 
 If l is not NULL, fills its referent with the result's length. If the result is NULL (only possible when returning d and d == NULL), its length is considered zero.
 如果 `l` 不为 `NULL`，则用结果的长度填充其引用。如果结果为 `NULL`（仅在返回 `d` 且 `d == NULL` 时可能），则其长度被视为零。
@@ -5124,8 +4920,6 @@ This function uses lua_tolstring to get its result, so all conversions and cavea
 If the function argument arg is a number, returns this number as a lua_Number. If this argument is absent or is nil, returns d. Otherwise, raises an error.
 如果函数参数 `arg` 是数字，则将其作为 `lua_Number` 返回。如果此参数缺失或为 `nil`，则返回 `d`。否则，引发错误。
 
-- **实现**（implementation）：利用 `luaL_opt` 宏，在参数为 nil 或缺失时返回默认值，否则调用 `luaL_checknumber`。Key source files: `lauxlib.c:luaL_optnumber` / `lauxlib.h:luaL_opt`。
-
 ### luaL_optstring
 
 `const char *luaL_optstring (lua_State *L, int arg, const char *d);`
@@ -5134,8 +4928,6 @@ If the function argument arg is a number, returns this number as a lua_Number. I
 
 If the function argument arg is a string, returns this string. If this argument is absent or is nil, returns d. Otherwise, raises an error.
 如果函数参数 `arg` 是字符串，则返回此字符串。如果此参数缺失或为 `nil`，则返回 `d`。否则，引发错误。
-
-- **实现**（implementation）：定义为宏，等价于 `luaL_optlstring(L, n, d, NULL)`。Key source files: `lauxlib.h:luaL_optstring`。
 
 ### luaL_prepbuffer
 
@@ -5146,8 +4938,6 @@ If the function argument arg is a string, returns this string. If this argument 
 Equivalent to luaL_prepbuffsize with the predefined size LUAL_BUFFERSIZE.
 等价于 `luaL_prepbuffsize` 且预定义大小为 `LUAL_BUFFERSIZE`。
 
-- **实现**（implementation）：定义为宏，直接调用 `luaL_prepbuffsize(B, LUAL_BUFFERSIZE)`。Key source files: `lauxlib.h:luaL_prepbuffer`。
-
 ### luaL_prepbuffsize
 
 `char *luaL_prepbuffsize (luaL_Buffer *B, size_t sz);`
@@ -5156,8 +4946,6 @@ Equivalent to luaL_prepbuffsize with the predefined size LUAL_BUFFERSIZE.
 
 Returns an address to a space of size sz where you can copy a string to be added to buffer B (see luaL_Buffer). After copying the string into this space you must call luaL_addsize with the size of the string to actually add it to the buffer.
 返回大小为 `sz` 的空间的地址，你可以在其中复制要添加到缓冲区 `B` 的字符串（见 `luaL_Buffer`）。将字符串复制到此空间后，你必须调用 `luaL_addsize` 并传入字符串的大小，以实际将其添加到缓冲区。
-
-- **实现**（implementation）：若内联空间不足，则创建或扩容 userdata box（`_UBOX*`），按 1.5 倍增长并复制旧数据。Key source files: `lauxlib.c:luaL_prepbuffsize`。
 
 ### luaL_pushfail
 
@@ -5168,8 +4956,6 @@ Returns an address to a space of size sz where you can copy a string to be added
 Pushes the fail value onto the stack (see §6).
 将 `fail` 值推入栈（见 §6）。
 
-- **实现**（implementation）：定义为宏，当前等价于 `lua_pushnil(L)`。Key source files: `lauxlib.h:luaL_pushfail`。
-
 ### luaL_pushresult
 
 `void luaL_pushresult (luaL_Buffer *B);`
@@ -5178,8 +4964,6 @@ Pushes the fail value onto the stack (see §6).
 
 Finishes the use of buffer B leaving the final string on the top of the stack.
 完成缓冲区 `B` 的使用，将最终字符串留在栈顶。
-
-- **实现**（implementation）：调用 `lua_pushlstring` 将缓冲区内容转为 Lua 字符串，并清理栈上的 box 或占位符。Key source files: `lauxlib.c:luaL_pushresult`。
 
 ### luaL_pushresultsize
 
@@ -5190,8 +4974,6 @@ Finishes the use of buffer B leaving the final string on the top of the stack.
 Equivalent to the sequence luaL_addsize, luaL_pushresult.
 等价于序列 `luaL_addsize`、`luaL_pushresult`。
 
-- **实现**（implementation）：先通过 `luaL_addsize` 更新长度，再调用 `luaL_pushresult` 生成最终字符串。Key source files: `lauxlib.c:luaL_pushresultsize`。
-
 ### luaL_ref
 
 `int luaL_ref (lua_State *L, int t);`
@@ -5200,8 +4982,6 @@ Equivalent to the sequence luaL_addsize, luaL_pushresult.
 
 Creates and returns a reference, in the table at index t, for the object on the top of the stack (and pops the object).
 在索引 `t` 处的表中为栈顶的对象创建并返回**引用**（并弹出该对象）。
-
-- **实现**（implementation）：使用注册表中的空闲链表（freelist）复用整数键，首次访问时初始化链表头。Key source files: `lauxlib.c:luaL_ref`。
 
 A reference is a unique integer key. As long as you do not manually add integer keys into the table t, luaL_ref ensures the uniqueness of the key it returns. You can retrieve an object referred by the reference r by calling lua_rawgeti(L, t, r). The function luaL_unref frees a reference.
 引用是唯一整数键。只要你没有手动将整数键添加到表 `t` 中，`luaL_ref` 就确保其返回的键的唯一性。你可以通过调用 `lua_rawgeti(L, t, r)` 来检索引用 `r` 所引用的对象。`luaL_unref` 函数释放引用。
@@ -5221,8 +5001,6 @@ typedef struct luaL_Reg {
 Type for arrays of functions to be registered by luaL_setfuncs. name is the function name and func is a pointer to the function. Any array of luaL_Reg must end with a sentinel entry in which both name and func are NULL.
 要由 `luaL_setfuncs` 注册的函数数组的类型。`name` 是函数名称，`func` 是指向函数的指针。任何 `luaL_Reg` 数组都必须以哨兵条目结尾，其中 `name` 和 `func` 均为 `NULL`。
 
-- **实现**（implementation）：结构体仅含 `name` 与 `func` 两个字段，`luaL_setfuncs` 通过遍历至 `NULL` 哨兵来注册所有函数。Key source files: `lauxlib.h:luaL_Reg`。
-
 ### luaL_requiref
 
 `void luaL_requiref (lua_State *L, const char *modname, lua_CFunction openf, int glb);`
@@ -5231,8 +5009,6 @@ Type for arrays of functions to be registered by luaL_setfuncs. name is the func
 
 If package.loaded[modname] is not true, calls the function openf with the string modname as an argument and sets the call result to package.loaded[modname], as if that function has been called through require.
 如果 `package.loaded[modname]` 不为 true，则使用字符串 `modname` 作为参数调用函数 `openf`，并将调用结果设置为 `package.loaded[modname]`，就好像该函数已通过 `require` 调用一样。
-
-- **实现**（implementation）：先查询 `_LOADED` 表，若未加载则调用 `openf`，将结果存入 `_LOADED` 并在 `glb` 为 true 时写入全局变量。Key source files: `lauxlib.c:luaL_requiref`。
 
 If glb is true, also stores the module into the global modname.
 如果 `glb` 为 true，还将模块存储到全局变量 `modname` 中。
@@ -5249,8 +5025,6 @@ Leaves a copy of the module on the stack.
 Registers all functions in the array l (see luaL_Reg) into the table on the top of the stack (below optional upvalues, see next).
 将数组 `l` 中的所有函数（见 `luaL_Reg`）注册到栈顶的表中（在可选的上值下方，见下文）。
 
-- **实现**（implementation）：遍历 `luaL_Reg` 数组，对每个条目复制上值并创建 `lua_CClosure`，然后用 `lua_setfield` 写入表中。Key source files: `lauxlib.c:luaL_setfuncs`。
-
 When nup is not zero, all functions are created with nup upvalues, initialized with copies of the nup values previously pushed on the stack on top of the library table. These values are popped from the stack after the registration.
 当 `nup` 不为零时，所有函数都使用 `nup` 个上值创建，使用先前推入库表上方栈的 `nup` 个值的副本初始化。这些值在注册后从栈中弹出。
 
@@ -5266,8 +5040,6 @@ A function with a NULL value represents a placeholder, which is filled with fals
 Sets the metatable of the object on the top of the stack as the metatable associated with name tname in the registry (see luaL_newmetatable).
 将栈顶对象的元表设置为注册表中与名称 `tname` 关联的元表（见 `luaL_newmetatable`）。
 
-- **实现**（implementation）：先从注册表获取元表，再对栈顶对象调用 `lua_setmetatable`。Key source files: `lauxlib.c:luaL_setmetatable`。
-
 ### luaL_Stream
 
 ```c
@@ -5279,8 +5051,6 @@ typedef struct luaL_Stream {
 
 The standard representation for file handles used by the standard I/O library.
 标准 I/O 库使用的**文件句柄**的标准表示。
-
-- **实现**（implementation）：文件句柄以该结构体开头作为完整 userdata，元表名固定为宏 `LUA_FILEHANDLE`（即 `"FILE*"`），`closef` 负责在关闭或 GC 时释放底层 `FILE*`。Key source files: `lauxlib.h:luaL_Stream` / `liolib.c`。
 
 A file handle is implemented as a full userdata, with a metatable called LUA_FILEHANDLE (where LUA_FILEHANDLE is a macro with the actual metatable's name). The metatable is created by the I/O library (see luaL_newmetatable).
 文件句柄实现为完整的 userdata，具有名为 `LUA_FILEHANDLE` 的元表（其中 `LUA_FILEHANDLE` 是具有实际元表名称的宏）。元表由 I/O 库创建（见 `luaL_newmetatable`）。
@@ -5297,8 +5067,6 @@ This userdata must start with the structure luaL_Stream; it can contain other da
 This function works like luaL_checkudata, except that, when the test fails, it returns NULL instead of raising an error.
 此函数的工作方式类似于 `luaL_checkudata`，不同之处在于，当测试失败时，它返回 `NULL` 而不是引发错误。
 
-- **实现**（implementation）：依次检查 userdata 指针、元表是否存在，并与注册表中 `tname` 对应的元表进行 `lua_rawequal` 比较。Key source files: `lauxlib.c:luaL_testudata`。
-
 ### luaL_tolstring
 
 `const char *luaL_tolstring (lua_State *L, int idx, size_t *len);`
@@ -5307,8 +5075,6 @@ This function works like luaL_checkudata, except that, when the test fails, it r
 
 Converts any Lua value at the given index to a C string in a reasonable format. The resulting string is pushed onto the stack and also returned by the function (see §4.1.3). If len is not NULL, the function also sets *len with the string length.
 将给定索引处的任何 Lua 值以合理的格式转换为 **C 字符串**。结果字符串被推入栈，也由函数返回（见 §4.1.3）。如果 `len` 不为 `NULL`，则函数还用字符串长度设置 `*len`。
-
-- **实现**（implementation）：优先调用 `__tostring` 元方法，否则根据类型（数字、布尔、nil 等）分别格式化，对 userdata/table 使用 `__name` 或类型名加地址。Key source files: `lauxlib.c:luaL_tolstring`。
 
 If the value has a metatable with a __tostring field, then luaL_tolstring calls the corresponding metamethod with the value as argument, and uses the result of the call as its result.
 如果值具有带有 `__tostring` 字段的元表，则 `luaL_tolstring` 使用值作为参数调用相应的元方法，并使用调用的结果作为其结果。
@@ -5322,8 +5088,6 @@ If the value has a metatable with a __tostring field, then luaL_tolstring calls 
 Creates and pushes a traceback of the stack L1. If msg is not NULL, it is appended at the beginning of the traceback. The level parameter tells at which level to start the traceback.
 创建并推送栈 `L1` 的回溯。如果 `msg` 不为 `NULL`，则将其附加到回溯的开头。`level` 参数指示从哪个级别开始回溯。
 
-- **实现**（implementation）：通过 `luaL_Buffer` 拼接回溯信息，使用 `lua_getstack` 与 `lua_getinfo` 遍历调用栈，并处理尾调用与跳过过多层级的提示。Key source files: `lauxlib.c:luaL_traceback`。
-
 ### luaL_typeerror
 
 `int luaL_typeerror (lua_State *L, int arg, const char *tname);`
@@ -5332,8 +5096,6 @@ Creates and pushes a traceback of the stack L1. If msg is not NULL, it is append
 
 Raises a type error for the argument arg of the C function that called it, using a standard message; tname is a "name" for the expected type. This function never returns.
 为调用它的 **C 函数**的参数 `arg` 引发类型错误，使用标准消息；`tname` 是预期类型的"名称"。此函数永远不会返回。
-
-- **实现**（implementation）：先尝试 `__name` 元字段获取实际类型名，构造 "expected, got" 消息后调用 `luaL_argerror`。Key source files: `lauxlib.c:luaL_typeerror`。
 
 ### luaL_typename
 
@@ -5344,8 +5106,6 @@ Raises a type error for the argument arg of the C function that called it, using
 Returns the name of the type of the value at the given index.
 返回给定索引处值类型的名称。
 
-- **实现**（implementation）：定义为宏，先取 `lua_type` 再调用 `lua_typename` 获取类型名字符串。Key source files: `lauxlib.h:luaL_typename`。
-
 ### luaL_unref
 
 `void luaL_unref (lua_State *L, int t, int ref);`
@@ -5354,8 +5114,6 @@ Returns the name of the type of the value at the given index.
 
 Releases the reference ref from the table at index t (see luaL_ref). The entry is removed from the table, so that the referred object can be collected. The reference ref is also freed to be used again.
 从索引 `t` 处的表中释放引用 `ref`（见 `luaL_ref`）。条目从表中移除，以便可以收集被引用的对象。引用 `ref` 也被释放以供再次使用。
-
-- **实现**（implementation）：将释放的引用插入空闲链表头部（`t[freelist]`），实现整数键的复用。Key source files: `lauxlib.c:luaL_unref`。
 
 If ref is LUA_NOREF or LUA_REFNIL, luaL_unref does nothing.
 如果 `ref` 是 `LUA_NOREF` 或 `LUA_REFNIL`，则 `luaL_unref` 不执行任何操作。
@@ -5369,8 +5127,6 @@ If ref is LUA_NOREF or LUA_REFNIL, luaL_unref does nothing.
 Pushes onto the stack a string identifying the current position of the control at level lvl in the call stack. Typically this string has the following format:
 将字符串推入栈，标识调用栈中级别 `lvl` 处控制的当前位置。通常，此字符串具有以下格式：
 
-- **实现**（implementation）：通过 `lua_getstack` 与 `lua_getinfo("Sl")` 获取源码文件名与行号，再用 `lua_pushfstring` 格式化为 `"file:line: "`。Key source files: `lauxlib.c:luaL_where`。
-
 ```
 chunkname:currentline:
 ```
@@ -5380,7 +5136,6 @@ Level 0 is the running function, level 1 is the function that called the running
 
 This function is used to build a prefix for error messages.
 此函数用于构建错误消息的前缀。
-
 
 ---
 
@@ -5445,14 +5200,10 @@ See §2.5 for more details about garbage collection and some of these options.
 This function should not be called by a finalizer.
 终结器不应调用此函数。
 
-- **实现**（implementation）：该函数是 `lua_gc` API 的封装，根据选项字符串调用不同模式的垃圾回收操作。Key source files: `lbaselib.c:luaB_collectgarbage`。
-
 ### dofile ([filename])
 
 Opens the named file and executes its content as a Lua chunk. When called without arguments, dofile executes the content of the standard input (stdin). Returns all values returned by the chunk. In case of errors, dofile propagates the error to its caller. (That is, dofile does not run in protected mode.)
 打开命名文件并将其内容作为 Lua 代码块执行。在没有参数的情况下调用时，`dofile` 执行标准输入（`stdin`）的内容。返回代码块返回的所有值。在出错的情况下，`dofile` 将错误传播给其调用者。（也就是说，`dofile` 不在受保护模式下运行。）
-
-- **实现**（implementation）：先调用 `luaL_loadfile` 加载文件，再通过 `lua_callk` 执行代码块并返回所有结果。Key source files: `lbaselib.c:luaB_dofile`。
 
 ### error (message [, level])
 
@@ -5484,8 +5235,6 @@ for i,v in ipairs(t) do body end
 will iterate over the key-value pairs (1,t[1]), (2,t[2]), ..., up to the first absent index.
 将遍历键值对 `(1,t[1])`、`(2,t[2])`、...，直到第一个缺失的索引。
 
-- **实现**（implementation）：返回迭代器函数 `ipairsaux`、表 `t` 和初始值 0，由 `ipairsaux` 通过 `lua_geti` 逐次读取序列元素。Key source files: `lbaselib.c:luaB_ipairs`、`lbaselib.c:ipairsaux`。
-
 ### load (chunk [, chunkname [, mode [, env]]])
 
 Loads a chunk.
@@ -5512,8 +5261,6 @@ The string mode controls whether the chunk can be text or binary (that is, a pre
 It is safe to load malformed binary chunks; load signals an appropriate error. However, Lua does not check the consistency of the code inside binary chunks; running maliciously crafted bytecode can crash the interpreter.
 加载格式错误的二进制代码块是安全的；`load` 会发出适当的错误信号。然而，Lua 不检查二进制代码块内部代码的一致性；运行恶意构造的字节码可能会使解释器崩溃。
 
-- **实现**（implementation）：若为字符串则调用 `luaL_loadbufferx`，若为函数则通过 `generic_reader` 回调配合 `lua_load` 逐段读取。Key source files: `lbaselib.c:luaB_load`、`lbaselib.c:generic_reader`。
-
 ### loadfile ([filename [, mode [, env]]])
 
 Similar to load, but gets the chunk from file filename or from the standard input, if no file name is given.
@@ -5529,8 +5276,6 @@ The order in which the indices are enumerated is not specified, even for numeric
 
 You should not assign any value to a non-existent field in a table during its traversal. You may however modify existing fields. In particular, you may set existing fields to nil.
 在遍历期间，你不应为表中的不存在的字段赋值。但是，你可以修改现有字段。特别地，你可以将现有字段设置为 `nil`。
-
-- **实现**（implementation）：直接调用底层 `lua_next` 遍历表的键值对，参数缺失时自动补 `nil`。Key source files: `lbaselib.c:luaB_next`。
 
 ### pairs (t)
 
@@ -5550,14 +5295,10 @@ will iterate over all key-value pairs of table t.
 See function next for the caveats of modifying the table during its traversal.
 有关在遍历期间修改表的注意事项，请参见 `next` 函数。
 
-- **实现**（implementation）：若存在 `__pairs` 元方法则调用它，否则返回 `luaB_next`、表和 `nil`。Key source files: `lbaselib.c:luaB_pairs`。
-
 ### pcall (f [, arg1, ...])
 
 Calls the function f with the given arguments in protected mode. This means that any error inside f is not propagated; instead, pcall catches the error and returns a status code. Its first result is the status code (a boolean), which is true if the call succeeds without errors. In such case, pcall also returns all results from the call, after this first result. In case of any error, pcall returns false plus the error object. Note that errors caught by pcall do not call a message handler.
 使用给定参数在受保护模式下调用函数 `f`。这意味着 `f` 内部的任何错误都不会传播；相反，`pcall` 捕获错误并返回状态码。其第一个结果是状态码（布尔值），如果调用成功且没有错误，则为 `true`。在这种情况下，`pcall` 还会返回调用的所有结果，在此第一个结果之后。在出现任何错误的情况下，`pcall` 返回 `false` 加错误对象。请注意，`pcall` 捕获的错误不会调用消息处理程序。
-
-- **实现**（implementation）：先压入 `true` 作为占位结果，再通过 `lua_pcallk` 进行保护调用，由 `finishpcall` 整理返回值。Key source files: `lbaselib.c:luaB_pcall`、`lbaselib.c:finishpcall`。
 
 ### print (...)
 
@@ -5617,8 +5358,6 @@ The conversion of strings can result in integers or floats, according to the lex
 When called with base, then e must be a string to be interpreted as an integer numeral in that base. The base may be any integer between 2 and 36, inclusive. In bases above 10, the letter A (in either upper or lower case) represents 10, B represents 11, and so forth, with Z representing 35. If the string e is not a valid numeral in the given base, the function returns fail.
 使用 `base` 调用时，`e` 必须是字符串，以解释为该进制中的整数数字。进制可以是 2 到 36 之间的任何整数（含）。在高于 10 的进制中，字母 `A`（大写或小写）表示 10，`B` 表示 11，依此类推，`Z` 表示 35。如果字符串 `e` 不是给定进制中的有效数字，则函数返回 `fail`。
 
-- **实现**（implementation）：无进制参数时调用 `lua_stringtonumber` 进行转换；有进制时通过自定义的 `b_str2int` 解析 2~36 进制整数。Key source files: `lbaselib.c:luaB_tonumber`、`lbaselib.c:b_str2int`。
-
 ### tostring (v)
 
 Receives a value of any type and converts it to a string in a human-readable format.
@@ -5629,8 +5368,6 @@ If the metatable of v has a __tostring field, then tostring calls the correspond
 
 For complete control of how numbers are converted, use string.format.
 要完全控制数字的转换方式，请使用 `string.format`。
-
-- **实现**（implementation）：调用 `luaL_tolstring` 完成转换，若值有 `__tostring` 元方法则优先调用。Key source files: `lbaselib.c:luaB_tostring`。
 
 ### type (v)
 
@@ -5655,8 +5392,6 @@ By convention, a one-piece message starting with @ is intended to be a control m
 This function is similar to pcall, except that it sets a new message handler msgh.
 此函数类似于 `pcall`，不同之处在于它设置了新的消息处理程序 `msgh`。
 
-- **实现**（implementation）：在栈上重新排列函数、错误处理程序和参数，通过 `lua_pcallk` 以错误处理程序作为消息处理函数进行保护调用。Key source files: `lbaselib.c:luaB_xpcall`。
-
 ## 6.2 – Coroutine Manipulation（协程操作）
 
 This library comprises the operations to manipulate coroutines, which come inside the table coroutine. See §2.6 for a general description of coroutines.
@@ -5671,8 +5406,6 @@ Closes coroutine co, that is, closes all its pending to-be-closed variables and 
 
 Creates a new coroutine, with body f. f must be a function. Returns this new coroutine, an object with type "thread".
 创建一个新的协程，主体为 `f`。`f` 必须是函数。返回此新协程，一个类型为 `"thread"` 的对象。
-
-- **实现**（implementation）：调用 `lua_newthread` 创建新线程，并将函数 `f` 通过 `lua_xmove` 移至新线程栈顶。Key source files: `lcorolib.c:luaB_cocreate`。
 
 ### coroutine.isyieldable ([co])
 
@@ -5690,8 +5423,6 @@ Starts or continues the execution of coroutine co. The first time you resume a c
 If the coroutine runs without any errors, resume returns true plus any values passed to yield (when the coroutine yields) or any values returned by the body function (when the coroutine terminates). If there is any error, resume returns false plus the error message.
 如果协程运行没有任何错误，则 `resume` 返回 `true` 加传递给 `yield` 的任何值（当协程让出时）或主体函数返回的任何值（当协程终止时）。如果有任何错误，`resume` 返回 `false` 加错误消息。
 
-- **实现**（implementation）：通过 `auxresume` 将参数 `lua_xmove` 到协程栈，再调用 `lua_resume` 执行，出错时返回 `false` 和错误信息。Key source files: `lcorolib.c:luaB_coresume`、`lcorolib.c:auxresume`。
-
 ### coroutine.running ()
 
 Returns the running coroutine plus a boolean, true when the running coroutine is the main one.
@@ -5707,14 +5438,10 @@ Returns the status of the coroutine co, as a string: "running", if the coroutine
 Creates a new coroutine, with body f; f must be a function. Returns a function that resumes the coroutine each time it is called. Any arguments passed to this function behave as the extra arguments to resume. The function returns the same values returned by resume, except the first boolean. In case of error, the function closes the coroutine and propagates the error.
 创建一个新的协程，主体为 `f`；`f` 必须是函数。返回一个每次调用时恢复协程的函数。传递给此函数的任何参数都表现为 `resume` 的额外参数。该函数返回与 `resume` 返回的相同值，除了第一个布尔值。在出错的情况下，该函数关闭协程并传播错误。
 
-- **实现**（implementation）：先创建协程，再返回一个 C 闭包 `luaB_auxwrap`，每次调用时通过 `auxresume` 恢复协程并在出错时关闭协程。Key source files: `lcorolib.c:luaB_cowrap`、`lcorolib.c:luaB_auxwrap`。
-
 ### coroutine.yield (...)
 
 Suspends the execution of the calling coroutine. Any arguments to yield are passed as extra results to resume.
 挂起调用协程的执行。`yield` 的任何参数都作为额外结果传递给 `resume`。
-
-- **实现**（implementation）：直接调用底层 `lua_yield` 挂起当前协程，并将所有参数作为 yield 结果返回。Key source files: `lcorolib.c:luaB_yield`。
 
 ## 6.3 – Modules（模块）
 
@@ -5740,8 +5467,6 @@ Once a loader is found, require calls the loader with two arguments: modname and
 
 If there is any error loading or running the module, or if it cannot find any loader for the module, then require raises an error.
 如果加载或运行模块时出现任何错误，或者找不到模块的任何加载器，则 `require` 会引发错误。
-
-- **实现**（implementation）：先检查 `package.loaded`，未加载时通过 `findloader` 遍历 `package.searchers` 查找加载器，调用后将结果写入 `package.loaded`。Key source files: `loadlib.c:ll_require`、`loadlib.c:findloader`。
 
 ### package.config
 
@@ -5839,8 +5564,6 @@ All searchers except the first one (preload) return as the extra value the file 
 Searchers should raise no errors and have no side effects in Lua. (They may have side effects in C, for instance by linking the application with a library.)
 搜索器不应引发错误，也不应在 Lua 中产生副作用。（它们可能在 C 中产生副作用，例如通过将应用程序与库链接。）
 
-- **实现**（implementation）：`luaopen_package` 通过 `createsearcherstable` 初始化四个搜索器：preload、Lua 文件、C 库、C 一体化加载器，依次尝试查找模块。Key source files: `loadlib.c:createsearcherstable`、`loadlib.c:searcher_preload`、`loadlib.c:searcher_Lua`、`loadlib.c:searcher_C`、`loadlib.c:searcher_Croot`。
-
 ### package.searchpath (name, path [, sep [, rep]])
 
 Searches for the given name in the given path.
@@ -5861,7 +5584,6 @@ the search for the name foo.a will try to open the files ./foo/a.lua, ./foo/a.lc
 
 Returns the resulting name of the first file that it can open in read mode (after closing the file), or fail plus an error message if none succeeds. (This error message lists all file names it tried to open.)
 返回它可以以读取模式打开的第一个文件的结果名称（关闭文件后），如果都不成功，则返回 `fail` 加错误消息。（此错误消息列出它尝试打开的所有文件名。）
-
 
 ## 6.4 – String Manipulation（字符串操作）
 
@@ -5898,8 +5620,6 @@ Returns a string containing a binary representation (a binary chunk) of the give
 Functions with upvalues have only their number of upvalues saved. When (re)loaded, those upvalues receive fresh instances. (See the load function for details about how these upvalues are initialized. You can use the debug library to serialize and reload the upvalues of a function in a way adequate to your needs.)
 具有上值的函数仅保存其上值的数量。当（重新）加载时，这些上值接收新的实例。（有关如何初始化这些上值的详细信息，请参见 `load` 函数。你可以使用调试库以适合你需求的方式序列化和重新加载函数的上值。）
 
-- **实现**（implementation）：调用 `lua_dump` 将函数序列化为二进制块，通过自定义 `writer` 回调将结果写入缓冲区。Key source files: `lstrlib.c:str_dump`。
-
 ### string.find (s, pattern [, init [, plain]])
 
 Looks for the first match of pattern (see §6.4.1) in the string s. If it finds a match, then find returns the indices of s where this occurrence starts and ends; otherwise, it returns fail. A third, optional numeric argument init specifies where to start the search; its default value is 1 and can be negative. A true as a fourth, optional argument plain turns off the pattern matching facilities, so the function does a plain "find substring" operation, with no characters in pattern being considered magic.
@@ -5907,8 +5627,6 @@ Looks for the first match of pattern (see §6.4.1) in the string s. If it finds 
 
 If the pattern has captures, then in a successful match the captured values are also returned, after the two indices.
 如果模式具有捕获，则在成功匹配后，捕获的值也会在两个索引之后返回。
-
-- **实现**（implementation）：内部统一调用 `str_find_aux` 进行模式匹配，`plain` 为真时关闭模式匹配只做简单子串查找。Key source files: `lstrlib.c:str_find`、`lstrlib.c:str_find_aux`。
 
 ### string.format (formatstring, ...)
 
@@ -5926,8 +5644,6 @@ The specifier s expects a string; if its argument is not a string, it is convert
 
 The specifier p formats the pointer returned by lua_topointer. That gives a unique string identifier for tables, userdata, threads, strings, and functions. For other values (numbers, nil, booleans), this specifier results in a string representing the pointer NULL.
 说明符 `p` 格式化 `lua_topointer` 返回的指针。这为表、userdata、线程、字符串和函数提供了唯一的字符串标识符。对于其他值（数字、`nil`、布尔值），此说明符产生表示指针 `NULL` 的字符串。
-
-- **实现**（implementation）：解析格式字符串后逐字符处理，对说明符 `q` 做特殊处理以生成 Lua 安全常量，其余调用标准 C 格式化。Key source files: `lstrlib.c:str_format`。
 
 ### string.gmatch (s, pattern [, init])
 
@@ -5957,8 +5673,6 @@ end
 
 For this function, a caret ^ at the start of a pattern does not work as an anchor, as this would prevent the iteration.
 对于此函数，模式开头的 `^` 不作为锚点工作，因为这会阻止迭代。
-
-- **实现**（implementation）：返回一个 C 闭包 `gmatch_aux`，每次调用时执行模式匹配并返回下一个捕获，内部通过 `match` 函数遍历。Key source files: `lstrlib.c:gmatch`、`lstrlib.c:gmatch_aux`。
 
 ### string.gsub (s, pattern, repl [, n])
 
@@ -6006,8 +5720,6 @@ x = string.gsub("$name-$version.tar.gz", "%$(%w+)", t)
 --> x="lua-5.4.tar.gz"
 ```
 
-- **实现**（implementation）：内部调用 `str_gsub` 进行模式匹配与替换，支持字符串、表、函数三种替换形式，并返回替换次数。Key source files: `lstrlib.c:str_gsub`。
-
 ### string.len (s)
 
 Receives a string and returns its length. The empty string "" has length 0. Embedded zeros are counted, so "a\000bc\000" has length 5.
@@ -6023,14 +5735,10 @@ Receives a string and returns a copy of this string with all uppercase letters c
 Looks for the first match of the pattern (see §6.4.1) in the string s. If it finds one, then match returns the captures from the pattern; otherwise it returns fail. If pattern specifies no captures, then the whole match is returned. A third, optional numeric argument init specifies where to start the search; its default value is 1 and can be negative.
 在字符串 `s` 中查找 `pattern` 的第一次匹配（见 §6.4.1）。如果找到一个，则 `match` 返回模式中的捕获；否则返回 `fail`。如果 `pattern` 没有指定捕获，则返回整个匹配。第三个可选数字参数 `init` 指定开始搜索的位置；其默认值为 1，可以为负数。
 
-- **实现**（implementation）：与 `string.find` 共用 `str_find_aux`，区别在于只返回捕获值而不返回位置索引。Key source files: `lstrlib.c:str_match`、`lstrlib.c:str_find_aux`。
-
 ### string.pack (fmt, v1, v2, ...)
 
 Returns a binary string containing the values v1, v2, etc. serialized in binary form (packed) according to the format string fmt (see §6.4.2).
 返回包含值 `v1`、`v2` 等的二进制字符串，根据格式字符串 `fmt` 以二进制形式序列化（打包）（见 §6.4.2）。
-
-- **实现**（implementation）：解析格式字符串，按选项逐个将参数序列化为二进制字节，处理对齐、字节序和溢出检查。Key source files: `lstrlib.c:str_pack`。
 
 ### string.packsize (fmt)
 
@@ -6062,8 +5770,6 @@ If, after the translation of negative indices, i is less than 1, it is corrected
 
 Returns the values packed in string s (see string.pack) according to the format string fmt (see §6.4.2). An optional pos marks where to start reading in s (default is 1). After the read values, this function also returns the index of the first unread byte in s.
 返回根据格式字符串 `fmt` 打包在字符串 `s` 中的值（见 `string.pack`）（见 §6.4.2）。可选的 `pos` 标记在 `s` 中开始读取的位置（默认值为 1）。读取值后，此函数还返回 `s` 中第一个未读取字节的索引。
-
-- **实现**（implementation）：按格式字符串从二进制字符串中反序列化值，同样处理字节序和对齐，并返回下一个未读取位置。Key source files: `lstrlib.c:str_unpack`。
 
 ### string.upper (s)
 
@@ -6224,8 +5930,6 @@ for p, c in utf8.codes(s) do body end
 will iterate over all UTF-8 characters in string s, with p being the position (in bytes) and c the code point of each character. It raises an error if it meets any invalid byte sequence.
 将遍历字符串 `s` 中的所有 UTF-8 字符，`p` 是位置（以字节为单位），`c` 是每个字符的代码点。如果遇到任何无效字节序列，则会引发错误。
 
-- **实现**（implementation）：返回 C 闭包 `iter_aux`，逐字符调用 `utf8_decode` 解码并检查延续字节，strict 模式下拒绝代理对和超出 Unicode 范围的值。Key source files: `lutf8lib.c:iter_codes`、`lutf8lib.c:iter_aux`、`lutf8lib.c:utf8_decode`。
-
 ### utf8.codepoint (s [, i [, j [, lax]]])
 
 Returns the code points (as integers) from all characters in s that start between byte position i and j (both included). The default for i is 1 and for j is i. It raises an error if it meets any invalid byte sequence.
@@ -6235,8 +5939,6 @@ Returns the code points (as integers) from all characters in s that start betwee
 
 Returns the number of UTF-8 characters in string s that start between positions i and j (both inclusive). The default for i is 1 and for j is -1. If it finds any invalid byte sequence, returns fail plus the position of the first invalid byte.
 返回字符串 `s` 中在位置 `i` 和 `j`（均包括）之间开始的 UTF-8 字符数量。`i` 的默认值为 1，`j` 的默认值为 -1。如果发现任何无效字节序列，则返回 `fail` 加第一个无效字节的位置。
-
-- **实现**（implementation）：在指定区间内逐字节调用 `utf8_decode` 统计有效字符数，遇到无效序列时返回失败和当前位置。Key source files: `lutf8lib.c:utflen`、`lutf8lib.c:utf8_decode`。
 
 ### utf8.offset (s, n [, i])
 
@@ -6248,8 +5950,6 @@ As a special case, when n is 0 the function returns the start of the encoding of
 
 This function assumes that s is a valid UTF-8 string.
 此函数假设 `s` 是有效的 UTF-8 字符串。
-
-- **实现**（implementation）：通过 `iscontp` 判断延续字节，从给定位置向前或向后遍历到字符边界，支持 `n == 0` 时返回当前字节所在字符的起始位置。Key source files: `lutf8lib.c:byteoffset`。
 
 ## 6.6 – Table Manipulation（表操作）
 
@@ -6264,14 +5964,10 @@ Remember that, whenever an operation needs the length of a table, all caveats ab
 Given a list where all elements are strings or numbers, returns the string list[i]..sep..list[i+1] ... sep..list[j]. The default value for sep is the empty string, the default for i is 1, and the default for j is #list. If i is greater than j, returns the empty string.
 给定一个所有元素都是字符串或数字的列表，返回字符串 `list[i]..sep..list[i+1] ... sep..list[j]`。`sep` 的默认值为空字符串，`i` 的默认值为 1，`j` 的默认值为 `#list`。如果 `i` 大于 `j`，则返回空字符串。
 
-- **实现**（implementation）：通过 `luaL_Buffer` 累积结果，对每个元素调用 `lua_geti` 读取并检查是否为字符串。Key source files: `ltablib.c:tconcat`、`ltablib.c:addfield`。
-
 ### table.insert (list, [pos,] value)
 
 Inserts element value at position pos in list, shifting up the elements list[pos], list[pos+1], ..., list[#list]. The default value for pos is #list+1, so that a call table.insert(t,x) inserts x at the end of the list t.
 在 `list` 的位置 `pos` 处插入元素 `value`，将元素 `list[pos]`、`list[pos+1]`、...、`list[#list]` 向上移动。`pos` 的默认值为 `#list+1`，因此调用 `table.insert(t,x)` 将 `x` 插入列表 `t` 的末尾。
-
-- **实现**（implementation）：通过 `lua_seti` 和 `lua_geti` 移动元素，在末尾或指定位置插入新值。Key source files: `ltablib.c:tinsert`。
 
 ### table.move (a1, f, e, t [,a2])
 
@@ -6280,8 +5976,6 @@ Moves elements from the table a1 to the table a2, performing the equivalent to t
 
 Returns the destination table a2.
 返回目标表 `a2`。
-
-- **实现**（implementation）：根据目标范围与源范围的关系选择正序或倒序复制，通过 `lua_geti`/`lua_seti` 逐元素移动。Key source files: `ltablib.c:tmove`。
 
 ### table.pack (...)
 
@@ -6296,8 +5990,6 @@ Removes from list the element at position pos, returning the value of the remove
 The default value for pos is #list, so that a call table.remove(l) removes the last element of the list l.
 `pos` 的默认值为 `#list`，因此调用 `table.remove(l)` 会移除列表 `l` 的最后一个元素。
 
-- **实现**（implementation）：通过 `lua_geti`/`lua_seti` 将后续元素向下移动一位，并在末尾置 `nil`。Key source files: `ltablib.c:tremove`。
-
 ### table.sort (list [, comp])
 
 Sorts the list elements in a given order, in-place, from list[1] to list[#list]. If comp is given, then it must be a function that receives two list elements and returns true when the first element must come before the second in the final order, so that, after the sort, i <= j implies not comp(list[j],list[i]). If comp is not given, then the standard Lua operator < is used instead.
@@ -6308,8 +6000,6 @@ The comp function must define a consistent order; more formally, the function mu
 
 The sort algorithm is not stable: Different elements considered equal by the given order may have their relative positions changed by the sort.
 排序算法不是稳定的：给定顺序认为相等的不同元素可能会因排序而改变其相对位置。
-
-- **实现**（implementation）：使用基于 Sedgewick 的快速排序算法，在分区失衡时随机化 pivot，通过 `sort_comp` 调用 Lua 比较函数或 `lua_compare`。Key source files: `ltablib.c:sort`、`ltablib.c:auxsort`、`ltablib.c:partition`。
 
 ### table.unpack (list [, i [, j]])
 
@@ -6322,8 +6012,6 @@ return list[i], list[i+1], ..., list[j]
 
 By default, i is 1 and j is #list.
 默认情况下，`i` 为 1，`j` 为 `#list`。
-
-- **实现**（implementation）：通过 `lua_geti` 将指定范围的元素压入栈并返回，使用 `lua_checkstack` 防止栈溢出。Key source files: `ltablib.c:tunpack`。
 
 ## 6.7 – Mathematical Functions（数学函数）
 
@@ -6434,12 +6122,10 @@ When called without arguments, returns a pseudo-random float with uniform distri
 不带参数调用时，返回在范围 `[0,1)` 内均匀分布的伪随机浮点数。使用两个整数 `m` 和 `n` 调用时，`math.random` 返回在范围 `[m, n]` 内均匀分布的伪随机整数。对于正数 `n`，调用 `math.random(n)` 等价于 `math.random(1,n)`。调用 `math.random(0)` 产生所有位都是（伪）随机的整数。
 
 This function uses the xoshiro256** algorithm to produce pseudo-random 64-bit integers, which are the results of calls with argument 0. Other results (ranges and floats) are unbiased extracted from these integers.
-此函数使用 **xoshiro256**\*** 算法生成伪随机 64 位整数，这些是使用参数 0 调用的结果。其他结果（范围和浮点数）是从这些整数中无偏提取的。
+此函数使用 `xoshiro256**` 算法生成伪随机 64 位整数，这些是使用参数 0 调用的结果。其他结果（范围和浮点数）是从这些整数中无偏提取的。
 
 Lua initializes its pseudo-random generator with the equivalent of a call to math.randomseed with no arguments, so that math.random should generate different sequences of results each time the program runs.
 Lua 使用等效于无参数调用 `math.randomseed` 的方式初始化其伪随机生成器，以便 `math.random` 在程序每次运行时生成不同的结果序列。
-
-- **实现**（implementation）：基于 xoshiro256** 算法生成 64 位伪随机整数，通过 `project` 函数将随机数无偏映射到指定区间。Key source files: `lmathlib.c:math_random`、`lmathlib.c:nextrand`、`lmathlib.c:project`。
 
 ### math.randomseed ([x [, y]])
 
@@ -6454,8 +6140,6 @@ This function returns the two seed components that were effectively used, so tha
 
 To ensure a required level of randomness to the initial state (or contrarily, to have a deterministic sequence, for instance when debugging a program), you should call math.randomseed with explicit arguments.
 要确保初始状态所需的随机性水平（或者相反，要获得确定性序列，例如在调试程序时），你应该使用显式参数调用 `math.randomseed`。
-
-- **实现**（implementation）：将 `x` 和 `y` 组合为 128 位种子初始化内部状态，无参数时使用当前时间和 `lua_State` 地址生成弱随机种子。Key source files: `lmathlib.c:math_randomseed`、`lmathlib.c:setseed`、`lmathlib.c:randseed`。
 
 ### math.sin (x)
 
@@ -6482,13 +6166,10 @@ If the value x is convertible to an integer, returns that integer. Otherwise, re
 Returns "integer" if x is an integer, "float" if it is a float, or fail if x is not a number.
 如果 `x` 是整数，则返回 `"integer"`；如果它是浮点数，则返回 `"float"`；如果 `x` 不是数字，则返回 `fail`。
 
-- **实现**（implementation）：直接检查栈上值的类型标签，区分 `LUA_TNUMBER` 下的整数和浮点子类型。Key source files: `lmathlib.c:math_type`。
-
 ### math.ult (m, n)
 
 Returns a boolean, true if and only if integer m is below integer n when they are compared as unsigned integers.
 返回布尔值，当且仅当整数 `m` 和 `n` 作为无符号整数比较时 `m` 低于 `n` 时为 `true`。
-
 
 ## 6.8 – Input and Output Facilities（输入和输出工具）
 
@@ -6536,8 +6217,6 @@ The call io.lines() (with no file name) is equivalent to io.input():lines("l"); 
 In case of errors opening the file, this function raises the error, instead of returning an error code.
 在打开文件时出错的情况下，此函数引发错误，而不是返回错误代码。
 
-- **实现**（implementation）：通过 `aux_lines` 创建 C 闭包 `io_readline`，迭代结束或出错时自动关闭文件，支持作为泛型 `for` 的 to-be-closed 变量。Key source files: `liolib.c:io_lines`、`liolib.c:aux_lines`、`liolib.c:io_readline`。
-
 ### io.open (filename [, mode])
 
 This function opens a file, in the mode specified in the string mode. In case of success, it returns a new file handle.
@@ -6556,8 +6235,6 @@ The mode string can be any of the following:
 The mode string can also have a 'b' at the end, which is needed in some systems to open the file in binary mode.
 `mode` 字符串末尾还可以有 `'b'`，在某些系统中需要它以二进制模式打开文件。
 
-- **实现**（implementation）：通过 `newfile` 创建文件句柄，调用 `fopen` 打开文件，并使用 `luaL_fileresult` 处理错误。Key source files: `liolib.c:io_open`、`liolib.c:newfile`。
-
 ### io.output ([file])
 
 Similar to io.input, but operates over the default output file.
@@ -6570,8 +6247,6 @@ This function is system dependent and is not available on all platforms.
 
 Starts the program prog in a separated process and returns a file handle that you can use to read data from this program (if mode is "r", the default) or to write data to this program (if mode is "w").
 在单独的进程中启动程序 `prog`，并返回文件句柄，你可以使用它从此程序读取数据（如果 `mode` 为 `"r"`，默认值）或向此程序写入数据（如果 `mode` 为 `"w"`）。
-
-- **实现**（implementation）：调用底层 `popen`（POSIX）或 `_popen`（Windows）创建进程管道，关闭函数使用 `io_pclose`。Key source files: `liolib.c:io_popen`、`liolib.c:io_pclose`。
 
 ### io.read (...)
 
@@ -6600,8 +6275,6 @@ Closes file. Note that files are automatically closed when their handles are gar
 
 When closing a file handle created with io.popen, file:close returns the same values returned by os.execute.
 关闭使用 `io.popen` 创建的文件句柄时，`file:close` 返回与 `os.execute` 返回的相同值。
-
-- **实现**（implementation）：调用句柄中存储的 `closef` 函数指针，普通文件使用 `fclose`，`popen` 文件使用 `pclose`。Key source files: `liolib.c:f_close`、`liolib.c:aux_close`、`liolib.c:io_fclose`、`liolib.c:io_pclose`。
 
 ### file:flush ()
 
@@ -6636,8 +6309,6 @@ The available formats are:
 
 The formats "l" and "L" should be used only for text files.
 格式 `"l"` 和 `"L"` 应仅用于文本文件。
-
-- **实现**（implementation）：由 `g_read` 统一处理，根据格式调用 `read_number`、`read_line`、`read_all` 或 `read_chars`，通过 `luaL_Buffer` 管理读取缓冲区。Key source files: `liolib.c:f_read`、`liolib.c:g_read`、`liolib.c:read_line`、`liolib.c:read_number`。
 
 ### file:seek ([whence [, offset]])
 
@@ -6677,8 +6348,6 @@ Writes the value of each of its arguments to file. The arguments must be strings
 In case of success, this function returns file.
 成功时，此函数返回 `file`。
 
-- **实现**（implementation）：由 `g_write` 统一处理，字符串调用 `fwrite`，数字调用 `fprintf`，使用 `LUA_INTEGER_FMT` 和 `LUA_NUMBER_FMT` 格式化。Key source files: `liolib.c:f_write`、`liolib.c:g_write`。
-
 ## 6.9 – Operating System Facilities（操作系统工具）
 
 This library is implemented through table os.
@@ -6709,8 +6378,6 @@ If format is absent, it defaults to "%c", which gives a human-readable date and 
 On non-POSIX systems, this function may be not thread safe because of its reliance on gmtime and localtime.
 在非 POSIX 系统上，由于其依赖于 `gmtime` 和 `localtime`，此函数可能不是线程安全的。
 
-- **实现**（implementation）：`"*t"` 格式时通过 `setallfields` 构建表，否则逐字符解析格式说明符并调用 `strftime`。Key source files: `loslib.c:os_date`、`loslib.c:setallfields`、`loslib.c:checkoption`。
-
 ### os.difftime (t2, t1)
 
 Returns the difference, in seconds, from time t1 to time t2 (where the times are values returned by os.time). In POSIX, Windows, and some other systems, this value is exactly t2-t1.
@@ -6727,8 +6394,6 @@ This function is equivalent to the ANSI system. It passes command to be executed
 When called without a command, os.execute returns a boolean that is true if a shell is available.
 不带 `command` 调用时，如果 shell 可用，`os.execute` 返回 `true` 的布尔值。
 
-- **实现**（implementation）：调用底层 C 函数 `system`，通过 `luaL_execresult` 解析返回状态以区分正常退出和信号终止。Key source files: `loslib.c:os_execute`。
-
 ### os.exit ([code [, close]])
 
 Calls the ANSI exit to terminate the host program. If code is true, the returned status is EXIT_SUCCESS; if code is false, the returned status is EXIT_FAILURE; if code is a number, the returned status is this number. The default value for code is true.
@@ -6736,8 +6401,6 @@ Calls the ANSI exit to terminate the host program. If code is true, the returned
 
 If the optional second argument close is true, the function closes the Lua state before exiting (see lua_close).
 如果可选的第二个参数 `close` 为 `true`，则函数在退出之前关闭 Lua 状态（见 `lua_close`）。
-
-- **实现**（implementation）：根据参数类型确定退出状态码，可选地调用 `lua_close` 关闭状态机，最后调用 C 标准库 `exit`。Key source files: `loslib.c:os_exit`。
 
 ### os.getenv (varname)
 
@@ -6749,14 +6412,10 @@ Returns the value of the process environment variable varname or fail if the var
 Deletes the file (or empty directory, on POSIX systems) with the given name. If this function fails, it returns fail plus a string describing the error and the error code. Otherwise, it returns true.
 删除具有给定名称的文件（或在 **POSIX** 系统上为空目录）。如果此函数失败，则返回 `fail` 加描述错误的字符串和错误代码。否则，它返回 `true`。
 
-- **实现**（implementation）：直接调用 C 标准库 `remove`，通过 `luaL_fileresult` 包装返回结果。Key source files: `loslib.c:os_remove`。
-
 ### os.rename (oldname, newname)
 
 Renames the file or directory named oldname to newname. If this function fails, it returns fail, plus a string describing the error and the error code. Otherwise, it returns true.
 将名为 `oldname` 的文件或目录重命名为 `newname`。如果此函数失败，则返回 `fail` 加描述错误的字符串和错误代码。否则，它返回 `true`。
-
-- **实现**（implementation）：直接调用 C 标准库 `rename`，通过 `luaL_fileresult` 包装返回结果。Key source files: `loslib.c:os_rename`。
 
 ### os.setlocale (locale [, category])
 
@@ -6785,8 +6444,6 @@ The returned value is a number, whose meaning depends on your system. In POSIX, 
 
 When called with a table, os.time also normalizes all the fields documented in the os.date function, so that they represent the same time as before the call but with values inside their valid ranges.
 使用表调用时，`os.time` 还规范化 `os.date` 函数中记录的所有字段，以便它们表示与调用之前相同的时间，但值在其有效范围内。
-
-- **实现**（implementation）：无参数时直接调用 `time(NULL)`，有参数时从表中提取字段构造 `struct tm` 并调用 `mktime`。Key source files: `loslib.c:os_time`、`loslib.c:getfield`、`loslib.c:setallfields`。
 
 ### os.tmpname ()
 
@@ -6834,8 +6491,6 @@ The returned table can contain all the fields returned by lua_getinfo, with the 
 For instance, the expression debug.getinfo(1,"n").name returns a name for the current function, if a reasonable name can be found, and the expression debug.getinfo(print) returns a table with all available information about the print function.
 例如，表达式 `debug.getinfo(1,"n").name` 返回当前函数的名称，如果找不到合理的名称，则表达式 `debug.getinfo(print)` 返回包含有关 `print` 函数的所有可用信息的表。
 
-- **实现**（implementation）：调用底层 `lua_getinfo` 获取调试信息，根据 `what` 选项通过 `settabss`/`settabsi`/`settabsb` 填充结果表。Key source files: `ldblib.c:db_getinfo`。
-
 ### debug.getlocal ([thread,] f, local)
 
 This function returns the name and the value of the local variable with index local of the function at level f of the stack. This function accesses not only explicit local variables, but also parameters and temporary values.
@@ -6849,8 +6504,6 @@ Variable names starting with '(' (open parenthesis) represent variables with no 
 
 The parameter f may also be a function. In that case, getlocal returns only the name of function parameters.
 参数 `f` 也可以是函数。在这种情况下，`getlocal` 只返回函数参数的名称。
-
-- **实现**（implementation）：对栈级别调用 `lua_getstack` 获取 `lua_Debug`，再通过 `lua_getlocal` 读取变量名和值；对函数参数则直接调用 `lua_getlocal`。Key source files: `ldblib.c:db_getlocal`。
 
 ### debug.getmetatable (value)
 
@@ -6907,8 +6560,6 @@ This function assigns the value value to the local variable with index local of 
 See debug.getlocal for more information about variable indices and names.
 有关变量索引和名称的更多信息，请参见 `debug.getlocal`。
 
-- **实现**（implementation）：通过 `lua_getstack` 定位栈帧，将值 `lua_xmove` 到目标线程，再调用 `lua_setlocal` 赋值。Key source files: `ldblib.c:db_setlocal`。
-
 ### debug.setmetatable (value, table)
 
 Sets the metatable for the given value to the given table (which can be nil). Returns value.
@@ -6934,8 +6585,6 @@ Returns udata, or fail if the userdata does not have that value.
 
 If message is present but is neither a string nor nil, this function returns message without further processing. Otherwise, it returns a string with a traceback of the call stack. The optional message string is appended at the beginning of the traceback. An optional level number tells at which level to start the traceback (default is 1, the function calling traceback).
 如果 `message` 存在但既不是字符串也不是 `nil`，则此函数返回 `message` 而不进行进一步处理。否则，它返回带有调用栈回溯的字符串。可选的 `message` 字符串附加到回溯的开头。可选的 `level` 数字指示从哪个级别开始回溯（默认值为 1，即调用 `traceback` 的函数）。
-
-- **实现**（implementation）：通过 `getthread` 获取目标线程，调用 `luaL_traceback` 生成调用栈回溯字符串。Key source files: `ldblib.c:db_traceback`。
 
 ### debug.upvalueid (f, n)
 
@@ -7002,6 +6651,8 @@ will first set a to 1, then require the library lib1, and finally run the file s
 Before running any code, lua collects all command-line arguments in a global table called arg. The script name goes to index 0, the first argument after the script name goes to index 1, and so on. Any arguments before the script name (that is, the interpreter name plus its options) go to negative indices.
 在运行任何代码之前，`lua` 将所有命令行参数收集到一个名为 `arg` 的全局表中。脚本名称进入索引 0，脚本名称后的第一个参数进入索引 1，依此类推。脚本名称之前的任何参数（即解释器名称及其选项）进入负索引。
 
+- **arg 表**：Lua 自动生成的全局表，脚本通过 `arg[0]` 获取自身路径，`arg[1]` 起为命令行参数；负索引存放解释器名称和选项。此表在 `lua.c:collectargs` 中构建。
+
 For instance, in the call
 例如，在调用中
 
@@ -7031,8 +6682,12 @@ will print -e.
 If there is a script, the script is called with arguments arg[1], ..., arg[#arg]. Like all chunks in Lua, the script is compiled as a variadic function.
 如果有脚本，则使用参数 `arg[1]`、...、`arg[#arg]` 调用脚本。与 Lua 中的所有代码块一样，脚本被编译为变长函数。
 
+- **variadic function**（变长函数）：可通过 `...` 接收任意数量参数的函数。Lua 的每个代码块在编译时都被视为变长函数，因此可通过 `arg` 或 `...` 访问命令行参数。
+
 In interactive mode, Lua repeatedly prompts and waits for a line. After reading a line, Lua first try to interpret the line as an expression. If it succeeds, it prints its value. Otherwise, it interprets the line as a statement. If you write an incomplete statement, the interpreter waits for its completion by issuing a different prompt.
 在交互模式下，Lua 反复提示并等待一行。读取一行后，Lua 首先尝试将该行解释为表达式。如果成功，它会打印其值。否则，它将该行解释为语句。如果你写了一个不完整的语句，解释器会通过发出不同的提示来等待其完成。
+
+- **interactive mode**（交互模式）：见 `lua.c:runargs`，读取每行后先尝试编译为表达式（`return <line>`），失败则按语句编译；不完整输入会触发次要提示符等待续行。
 
 If the global variable _PROMPT contains a string, then its value is used as the prompt. Similarly, if the global variable _PROMPT2 contains a string, its value is used as the secondary prompt (issued during incomplete statements).
 如果全局变量 `_PROMPT` 包含字符串，则其值用作提示符。类似地，如果全局变量 `_PROMPT2` 包含字符串，则其值用作辅助提示符（在不完整语句期间发出）。
@@ -7040,11 +6695,15 @@ If the global variable _PROMPT contains a string, then its value is used as the 
 In case of unprotected errors in the script, the interpreter reports the error to the standard error stream. If the error object is not a string but has a metamethod __tostring, the interpreter calls this metamethod to produce the final message. Otherwise, the interpreter converts the error object to a string and adds a stack traceback to it. When warnings are on, they are simply printed in the standard error output.
 在脚本中出现未受保护的错误时，解释器将错误报告给标准错误流。如果错误对象不是字符串但具有元方法 `__tostring`，则解释器调用此元方法来生成最终消息。否则，解释器将错误对象转换为字符串并向其添加栈回溯。当警告打开时，它们只是在标准错误输出中打印。
 
+- **stack traceback**（栈回溯）：由 `ldebug.c:luaL_traceback` 生成，递归遍历 `CallInfo` 链表，输出每一层的函数名、文件名和行号，形成从异常点到入口的完整调用链。
+
 When finishing normally, the interpreter closes its main Lua state (see lua_close). The script can avoid this step by calling os.exit to terminate.
 正常完成时，解释器关闭其主 Lua 状态（见 `lua_close`）。脚本可以通过调用 `os.exit` 终止来避免此步骤。
 
 To allow the use of Lua as a script interpreter in Unix systems, Lua skips the first line of a file chunk if it starts with #. Therefore, Lua scripts can be made into executable programs by using chmod +x and the #! form, as in
 为了允许在 Unix 系统中将 Lua 用作脚本解释器，如果文件代码块的第一行以 `#` 开头，Lua 会跳过它。因此，Lua 脚本可以通过使用 `chmod +x` 和 `#!` 形式制成可执行程序，例如
+
+- **shebang**（`#!`）：Unix 系统在运行脚本时读取首行 `#!` 后的路径作为解释器，Lua 通过 `lua.c:skipBOM` 中的简单首行判断跳过 `#` 开头行（无需 OS 支持，直接编译时忽略）。
 
 ```
 #!/usr/local/bin/lua
@@ -7084,6 +6743,8 @@ The standard paths in the official distribution may change between versions.
 - The coercion of strings to numbers in arithmetic and bitwise operations has been removed from the core language. The string library does a similar job for arithmetic (but not for bitwise) operations using the string metamethods. However, unlike in previous versions, the new implementation preserves the implicit type of the numeral in the string. For instance, the result of "1" + "2" now is an integer, not a float.
 - 算术和按位运算中字符串到数字的强制转换已从核心语言中删除。字符串库使用字符串元方法为算术（但不为按位）运算执行类似的工作。然而，与以前的版本不同，新实现保留了字符串中数字的隐式类型。例如，`"1" + "2"` 的结果现在是整数，而不是浮点数。
 
+- **coercion**（强制转换）：运行时自动将一种类型转换为另一种类型。Lua 5.3 中字符串在算术运算中会被自动转换为数字；5.4 移除了此行为，字符串需显式通过 `tonumber` 或字符串库的算术元方法转换。
+
 - Literal decimal integer constants that overflow are read as floats, instead of wrapping around. You can use hexadecimal notation for such constants if you want the old behavior (reading them as integers with wrap around).
 - 溢出的十进制整数字面常量被读取为浮点数，而不是回绕。如果你想要旧的行为（将它们读取为带回绕的整数），你可以使用十六进制表示法来表示此类常量。
 
@@ -7120,6 +6781,8 @@ The standard paths in the official distribution may change between versions.
 
 - Full userdata now has an arbitrary number of associated user values. Therefore, the functions lua_newuserdata, lua_setuservalue, and lua_getuservalue were replaced by lua_newuserdatauv, lua_setiuservalue, and lua_getiuservalue, which have an extra argument. For compatibility, the old names still work as macros assuming one single user value. Note, however, that userdata with zero user values are more efficient memory-wise.
 - 完整 userdata 现在具有任意数量的关联用户值。因此，函数 `lua_newuserdata`、`lua_setuservalue` 和 `lua_getuservalue` 被 `lua_newuserdatauv`、`lua_setiuservalue` 和 `lua_getiuservalue` 替换，它们有一个额外的参数。为了兼容性，旧名称仍然作为假设单个用户值的宏工作。但是请注意，具有零个用户值的 userdata 在内存方面更有效。
+
+- **user values**（用户值）：附加在 full userdata 上的 `TValue` 数组，通过 `uvalue(o)->uv[n-1]` 访问。5.4 中用户值数量可在创建时指定（`lua_newuserdatauv`），代替了旧版的单个 `uservalue` 槽位。在 `lobject.h:Udata` 结构中通过 `nuvalue` 字段记录数量。
 
 - The function lua_resume has an extra parameter. This out parameter returns the number of values on the top of the stack that were yielded or returned by the coroutine. (In previous versions, those values were the entire stack.)
 - 函数 `lua_resume` 有一个额外的参数。此输出参数返回协程让出或返回的栈顶值的数量。（在以前的版本中，这些值是整个栈。）
@@ -7210,4 +6873,3 @@ binop        ::= '+' | '-' | '*' | '/' | '//' | '^' | '%' |
 
 unop         ::= '-' | not | '#' | '~'
 ```
-
